@@ -16,6 +16,9 @@ const CHUNK_SIZE = 512;
 const CHUNK_OVERLAP = 50;
 const TOP_K = 3;
 
+// Conversation memory
+let conversationHistory = [];
+
 // UI elements
 const loadingOverlay = document.getElementById('loading-overlay');
 const loadingMessage = document.getElementById('loading-message');
@@ -286,16 +289,23 @@ window.runRAG = async function () {
 
             contextList.innerHTML = contextChunks.map((c, i) => `<li>Chunk ${i + 1}: ${c.substring(0, 100)}...</li>`).join('');
             const augmentedContext = contextChunks.join('\n---\n');
+            // Build conversation context
+            let conversationContext = '';
+            if (conversationHistory.length > 0) {
+                conversationContext = `\n\nPrevious conversation:\n${conversationHistory.map(conv => `User: ${conv.user}\nAssistant: ${conv.assistant}`).join('\n\n')}`;
+            }
+
             const userPrompt = `You are a knowledge base search assistant. The user is asking you to search through the provided context data. 
 
 Your task:
 1. Search through the context for the specific information requested
 2. Report exactly what you found in the context
 3. Quote or reference the specific parts of the context that contain the information
+4. Consider the conversation history for context
 
 Context: ${augmentedContext}
 
-User Question: ${query}
+User Question: ${query}${conversationContext}
 
 Answer based on what you actually find in the context above. If you find specific occurrences, mention them. If you don't find anything, say so.`;
 
@@ -304,7 +314,14 @@ Answer based on what you actually find in the context above. If you find specifi
                     outputLanguage: 'en'
                 });
                 // Append the context to the AI's answer
-                responseOutput.textContent = response + '\n\n---\n\n' + augmentedContext;
+                const fullResponse = response + '\n\n---\n\n' + augmentedContext;
+                responseOutput.textContent = fullResponse;
+
+                // Store conversation history
+                conversationHistory.push({ user: query, assistant: response });
+                if (conversationHistory.length > 1) {
+                    conversationHistory = conversationHistory.slice(-1); // Keep only the last conversation
+                }
             } catch (aiError) {
                 console.error('AI API error:', aiError);
                 responseOutput.textContent = `Error with AI API: ${aiError.message}`;
@@ -314,11 +331,23 @@ Answer based on what you actually find in the context above. If you find specifi
             console.log('🔍 Debug: Using direct AI response (no vector search)');
             contextList.innerHTML = '<li>Direct AI response (no knowledge base search)</li>';
 
+            // Build conversation context for direct responses too
+            let conversationContext = '';
+            if (conversationHistory.length > 0) {
+                conversationContext = `\n\nPrevious conversation:\n${conversationHistory.map(conv => `User: ${conv.user}\nAssistant: ${conv.assistant}`).join('\n\n')}`;
+            }
+
             try {
-                const response = await nanoSession.prompt(`Answer the following question in a straightforward manner and as short as possible while providing relevant information:\n\n${query}`, {
+                const response = await nanoSession.prompt(`Answer the following question in a straightforward manner and as short as possible while providing relevant information:\n\n${query}${conversationContext}`, {
                     outputLanguage: 'en'
                 });
                 responseOutput.textContent = response;
+
+                // Store conversation history
+                conversationHistory.push({ user: query, assistant: response });
+                if (conversationHistory.length > 1) {
+                    conversationHistory = conversationHistory.slice(-1); // Keep only the last conversation
+                }
             } catch (aiError) {
                 console.error('AI API error:', aiError);
                 responseOutput.textContent = `Error with AI API: ${aiError.message}`;
