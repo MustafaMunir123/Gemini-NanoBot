@@ -1,0 +1,15 @@
+{
+    "manifest_version": 3,
+    "name": "Rewriter",
+    "description": "Rewrite any text using Chrome’s Rewriter API.",
+    "version": "1.0",
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": "icon.png"
+    },
+    "permissions": [],
+    "host_permissions": [],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'"
+    }
+}

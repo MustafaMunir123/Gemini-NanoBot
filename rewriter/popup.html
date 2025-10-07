@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>AI Text Rewriter</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 16px;
+            width: 300px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        #output {
+            margin-top: 10px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <h3>Chrome Rewriter</h3>
+
+    <label>Input Text</label>
+    <textarea id="inputText" placeholder="Enter text..."></textarea>
+
+    <label>Instructions</label>
+    <textarea id="instructions" placeholder="e.g. Make it more formal"></textarea>
+
+    <button id="rewriteBtn">Rewrite</button>
+
+    <div id="output"></div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
