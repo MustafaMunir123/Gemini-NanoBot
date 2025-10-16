@@ -137,6 +137,52 @@
         background-position: center;
         background-size: contain;
       }
+      .file-upload-rectangle {
+        position: absolute;
+        left: ${BUTTON_SIZE + 2}px;
+        top: 50%;
+        transform: translateY(-50%) translateX(-8px);
+        background: white;
+        border-radius: 6px;
+        padding: 6px 10px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        opacity: 0;
+        transition: all 0.2s ease;
+        pointer-events: none;
+        white-space: nowrap;
+        font-size: 11px;
+        color: #333;
+        border: 1px solid #e0e0e0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        z-index: 1;
+      }
+      .file-upload-rectangle.visible {
+        opacity: 1;
+        transform: translateY(-50%) translateX(0);
+        pointer-events: auto;
+      }
+      .file-upload-rectangle:hover {
+        background: #f5f5f5;
+        transform: translateY(-50%) translateX(0) scale(1.02);
+      }
+      .file-icon {
+        width: 12px;
+        height: 12px;
+        background: #4CAF50;
+        border-radius: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 7px;
+        font-weight: bold;
+      }
+      .hidden-file-input {
+        display: none;
+      }
     `;
 
   const container = document.createElement('div');
@@ -144,6 +190,27 @@
   const icon = document.createElement('div');
   icon.className = 'icon';
   container.appendChild(icon);
+
+  // Create file upload rectangle
+  const fileUploadRectangle = document.createElement('div');
+  fileUploadRectangle.className = 'file-upload-rectangle';
+
+  const fileIcon = document.createElement('div');
+  fileIcon.className = 'file-icon';
+  fileIcon.textContent = '+';
+
+  const fileText = document.createElement('span');
+  fileText.textContent = 'Add File';
+
+  fileUploadRectangle.appendChild(fileIcon);
+  fileUploadRectangle.appendChild(fileText);
+
+  // Create hidden file input
+  const hiddenFileInput = document.createElement('input');
+  hiddenFileInput.type = 'file';
+  hiddenFileInput.className = 'hidden-file-input';
+  hiddenFileInput.accept = '.txt';
+  hiddenFileInput.multiple = false;
 
   // Initialize the icon from localStorage
   async function initializeIcon() {
@@ -178,13 +245,14 @@
 
   shadow.appendChild(style);
   shadow.appendChild(container);
+  shadow.appendChild(fileUploadRectangle);
+  shadow.appendChild(hiddenFileInput);
 
   let activeElement = null;
   let originalInputElement = null; // Keep reference to the original input
   let lastFocusedElement = null; // Track the last focused text element
   let visible = false;
   let proofreaderSession = null;
-  let currentCorrectedText = null;
   let hideTimeout = null; // Debounce hiding
   let isProofreading = false; // Track if proofreading is in progress
 
@@ -286,13 +354,31 @@
     }
   }
 
+  // Process uploaded file and extract text
+  async function processUploadedFile(file) {
+    console.log('Processing uploaded file:', file.name, 'Type:', file.type);
 
+    try {
+      const text = await file.text();
+
+      if (text.trim()) {
+        console.log('Extracted text from file:', text.substring(0, 100) + '...');
+        console.log('Full extracted text:', text);
+        console.log('Text length:', text.length, 'characters');
+        console.log('File content extracted successfully - check console for full text');
+      } else {
+        console.log('No text content found in file');
+        alert('No readable text found in the file. Please try a different file or ensure the file contains text content.');
+      }
+    } catch (error) {
+      console.error('Error processing file:', error);
+      alert('Error reading file. Please make sure it\'s a valid text file.');
+    }
+  }
 
   // Perform proofreading and apply directly
   async function performAndApplyProofreading() {
-    console.log('performAndApplyProofreading called');
-    console.log('originalInputElement:', originalInputElement);
-
+    console.log('Starting proofreading...');
     if (!originalInputElement) {
       console.error('No original input element found');
       return;
@@ -300,7 +386,6 @@
 
     const text = getTextFromElement(originalInputElement);
     console.log('Text to proofread:', text);
-
     if (!text.trim()) {
       console.log('No text to proofread - skipping proofreading');
       return;
@@ -308,36 +393,27 @@
 
     // Set proofreading flag to prevent interference
     isProofreading = true;
-    console.log('Proofreading started, preventing hide timeout');
 
     try {
-      console.log('Initializing proofreader...');
       // Initialize proofreader if needed
       const session = await initializeProofreader();
       if (!session) {
         throw new Error('Failed to initialize proofreader');
       }
 
-      console.log('Session created, performing proofreading...');
       // Perform proofreading
       const proofreadResult = await session.proofread(text);
 
-      console.log('Proofread result:', proofreadResult);
-
       if (proofreadResult && proofreadResult.correctedInput) {
         const correctedText = proofreadResult.correctedInput;
-        console.log('Corrected text:', correctedText);
+        console.log('Proofreading completed - applying corrections');
 
         // Apply the corrected text directly
         if (correctedText !== text) {
-          console.log('Applying corrected text to input field');
           setTextToElement(originalInputElement, correctedText);
-          console.log('Text applied successfully');
         } else {
           console.log('No corrections needed');
         }
-      } else {
-        console.log('No corrections found or invalid result');
       }
 
     } catch (error) {
@@ -345,13 +421,11 @@
     } finally {
       // Clear proofreading flag
       isProofreading = false;
-      console.log('Proofreading completed, allowing hide timeout');
 
       // Destroy the proofreader session to free up resources
       if (proofreaderSession) {
         try {
           proofreaderSession.destroy();
-          console.log('Proofreader session destroyed');
           proofreaderSession = null;
         } catch (error) {
           console.warn('Error destroying proofreader session:', error);
@@ -362,9 +436,7 @@
 
 
   function showForElement(el) {
-    console.log('showForElement called with:', el);
     if (!isTextEditable(el)) {
-      console.log('Element is not text editable, hiding');
       return hide();
     }
 
@@ -378,7 +450,6 @@
     if (activeElement && activeElement !== el && proofreaderSession) {
       try {
         proofreaderSession.destroy();
-        console.log('Proofreader session destroyed on element switch');
         proofreaderSession = null;
       } catch (error) {
         console.warn('Error destroying proofreader session on element switch:', error);
@@ -387,7 +458,6 @@
 
     activeElement = el;
     originalInputElement = el; // Store reference to the original input element
-    console.log('Set originalInputElement to:', originalInputElement);
     positionNearElement(el);
     container.classList.add('visible');
     visible = true;
@@ -396,7 +466,6 @@
   function hide() {
     // Don't hide if proofreading is in progress
     if (isProofreading) {
-      console.log('Cannot hide while proofreading is in progress');
       return;
     }
 
@@ -407,6 +476,7 @@
     }
 
     container.classList.remove('visible');
+    fileUploadRectangle.classList.remove('visible');
     visible = false;
     activeElement = null;
     originalInputElement = null; // Clear the original input reference
@@ -415,15 +485,11 @@
     if (proofreaderSession) {
       try {
         proofreaderSession.destroy();
-        console.log('Proofreader session destroyed on hide');
         proofreaderSession = null;
       } catch (error) {
         console.warn('Error destroying proofreader session on hide:', error);
       }
     }
-
-    // Reset corrected text
-    currentCorrectedText = null;
   }
 
   function positionNearElement(el) {
@@ -438,34 +504,25 @@
   // Track the last focused input/textarea/contenteditable (based on working implementation)
   document.addEventListener('focusin', (e) => {
     const el = e.target;
-    console.log('focusin event on:', el);
     if (isTextEditable(el)) {
-      console.log('Element is text editable, showing circle');
+      console.log('Text input focused, showing circle');
       lastFocusedElement = el; // Store the last focused element
 
       // Only show if not already visible or if it's a different element
       if (!visible || activeElement !== el) {
         showForElement(el);
-      } else {
-        console.log('Circle already visible for this element');
       }
-    } else {
-      console.log('Element is not text editable');
     }
   });
 
   document.addEventListener('focusout', (e) => {
-    console.log('focusout event on:', e.target);
-
     // Don't start hide timeout if proofreading is in progress
     if (isProofreading) {
-      console.log('Proofreading in progress, skipping hide timeout');
       return;
     }
 
     // Don't hide if the focus is moving to our circle or shadow DOM
     if (e.relatedTarget && (e.relatedTarget === container || shadow.contains(e.relatedTarget))) {
-      console.log('Focus moving to our widget, keeping circle visible');
       return;
     }
 
@@ -478,10 +535,7 @@
       if (document.activeElement !== container &&
         !shadow.contains(document.activeElement) &&
         !isProofreading) {
-        console.log('Focus moved away from input, hiding circle');
         hide();
-      } else {
-        console.log('Focus is on our widget or proofreading, keeping circle visible');
       }
       hideTimeout = null;
     }, 300);
@@ -489,24 +543,77 @@
   container.addEventListener('click', (e) => {
     e.stopPropagation();
     console.log('Floating circle clicked - starting proofreading');
-    console.log('activeElement:', activeElement);
-    console.log('originalInputElement:', originalInputElement);
 
     // Clear any pending hide timeout when circle is clicked
     if (hideTimeout) {
       clearTimeout(hideTimeout);
       hideTimeout = null;
-      console.log('Cleared hide timeout due to circle click');
     }
 
     // If we don't have an element reference, use the last focused element
     if (!originalInputElement && lastFocusedElement && isTextEditable(lastFocusedElement)) {
       originalInputElement = lastFocusedElement;
-      console.log('Using last focused element:', lastFocusedElement);
     }
 
     // Directly proofread and apply text
     performAndApplyProofreading();
+  });
+
+  let rectangleHideTimeout = null;
+
+  // Add hover event handlers for the file upload rectangle
+  container.addEventListener('mouseenter', () => {
+    if (visible) {
+      console.log('Circle hovered - showing file upload rectangle');
+      // Clear any pending hide timeout
+      if (rectangleHideTimeout) {
+        clearTimeout(rectangleHideTimeout);
+        rectangleHideTimeout = null;
+      }
+      fileUploadRectangle.classList.add('visible');
+    }
+  });
+
+  container.addEventListener('mouseleave', () => {
+    // Add a small delay before hiding to allow moving to rectangle
+    rectangleHideTimeout = setTimeout(() => {
+      fileUploadRectangle.classList.remove('visible');
+      rectangleHideTimeout = null;
+    }, 150);
+  });
+
+  // Keep rectangle visible when hovering over it
+  fileUploadRectangle.addEventListener('mouseenter', () => {
+    // Clear any pending hide timeout
+    if (rectangleHideTimeout) {
+      clearTimeout(rectangleHideTimeout);
+      rectangleHideTimeout = null;
+    }
+    fileUploadRectangle.classList.add('visible');
+  });
+
+  fileUploadRectangle.addEventListener('mouseleave', () => {
+    // Add a small delay before hiding
+    rectangleHideTimeout = setTimeout(() => {
+      fileUploadRectangle.classList.remove('visible');
+      rectangleHideTimeout = null;
+    }, 150);
+  });
+
+  // Handle file upload rectangle click
+  fileUploadRectangle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    console.log('File upload rectangle clicked');
+    hiddenFileInput.click();
+  });
+
+  // Handle file selection
+  hiddenFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      console.log('File selected:', file.name);
+      processUploadedFile(file);
+    }
   });
 
 
