@@ -287,6 +287,7 @@
   }
 
 
+
   // Perform proofreading and apply directly
   async function performAndApplyProofreading() {
     console.log('performAndApplyProofreading called');
@@ -301,7 +302,7 @@
     console.log('Text to proofread:', text);
 
     if (!text.trim()) {
-      console.log('No text to proofread');
+      console.log('No text to proofread - skipping proofreading');
       return;
     }
 
@@ -462,14 +463,18 @@
       return;
     }
 
+    // Don't hide if the focus is moving to our circle or shadow DOM
+    if (e.relatedTarget && (e.relatedTarget === container || shadow.contains(e.relatedTarget))) {
+      console.log('Focus moving to our widget, keeping circle visible');
+      return;
+    }
+
     // Clear any existing hide timeout
     if (hideTimeout) {
       clearTimeout(hideTimeout);
     }
 
-    // Don't hide immediately, wait a bit to see if focus moves to our widget
     hideTimeout = setTimeout(() => {
-      // Only hide if focus didn't move to our widget and not proofreading
       if (document.activeElement !== container &&
         !shadow.contains(document.activeElement) &&
         !isProofreading) {
@@ -487,51 +492,17 @@
     console.log('activeElement:', activeElement);
     console.log('originalInputElement:', originalInputElement);
 
-    // If we don't have an element reference, try to find the last focused element
-    if (!originalInputElement && !activeElement) {
-      console.log('No element reference found, trying to find last focused element');
-      console.log('lastFocusedElement:', lastFocusedElement);
+    // Clear any pending hide timeout when circle is clicked
+    if (hideTimeout) {
+      clearTimeout(hideTimeout);
+      hideTimeout = null;
+      console.log('Cleared hide timeout due to circle click');
+    }
 
-      // First try the last focused element if it has text
-      if (lastFocusedElement && isTextEditable(lastFocusedElement)) {
-        const text = getTextFromElement(lastFocusedElement);
-        if (text.trim()) {
-          originalInputElement = lastFocusedElement;
-          console.log('Using last focused element with text:', lastFocusedElement);
-        }
-      }
-
-      // If last focused element doesn't have text, try to find elements with content
-      if (!originalInputElement) {
-        const contentEditableElements = document.querySelectorAll('[contenteditable="true"]');
-        const textInputs = document.querySelectorAll('input[type="text"], input[type="email"], textarea');
-
-        // First try contenteditable elements (like Gmail compose)
-        for (const input of contentEditableElements) {
-          if (input.offsetParent !== null && input.textContent.trim()) {
-            originalInputElement = input;
-            console.log('Found contenteditable element with text:', input);
-            break;
-          }
-        }
-
-        // If no contenteditable with text, try regular inputs with content
-        if (!originalInputElement) {
-          for (const input of textInputs) {
-            if (input.offsetParent !== null && input.value.trim()) {
-              originalInputElement = input;
-              console.log('Found input element with text:', input);
-              break;
-            }
-          }
-        }
-      }
-
-      // If still no element, use the last focused element as last resort
-      if (!originalInputElement && lastFocusedElement) {
-        originalInputElement = lastFocusedElement;
-        console.log('Using last focused element as fallback:', lastFocusedElement);
-      }
+    // If we don't have an element reference, use the last focused element
+    if (!originalInputElement && lastFocusedElement && isTextEditable(lastFocusedElement)) {
+      originalInputElement = lastFocusedElement;
+      console.log('Using last focused element:', lastFocusedElement);
     }
 
     // Directly proofread and apply text
