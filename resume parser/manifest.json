@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Resume Parser",
+  "version": "1.0",
+  "description": "Extract text from resumes (.txt, .docx, .pdf)",
+  "permissions": ["downloads"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["parser/*.worker.min.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
