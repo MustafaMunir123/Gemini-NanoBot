@@ -180,6 +180,18 @@
         font-size: 7px;
         font-weight: bold;
       }
+      .file-icon.attached {
+        background: #FF9800;
+      }
+      .file-upload-rectangle.attached {
+        background: #FFF3E0;
+        border-color: #FF9800;
+        color: #E65100;
+      }
+      .file-upload-rectangle.attached:hover {
+        background: #FFE0B2;
+        transform: translateY(-50%) translateX(0) scale(1.02);
+      }
       .hidden-file-input {
         display: none;
       }
@@ -201,6 +213,7 @@
 
   const fileText = document.createElement('span');
   fileText.textContent = 'Add File';
+  fileText.id = 'file-text-display';
 
   fileUploadRectangle.appendChild(fileIcon);
   fileUploadRectangle.appendChild(fileText);
@@ -242,6 +255,59 @@
   // Initialize the icon
   initializeIcon();
 
+  // Update file button UI based on stored content
+  function updateFileButtonUI() {
+    console.log('updateFileButtonUI called - uploadedFileName:', uploadedFileName, 'storedContent length:', storedContent ? storedContent.length : 0);
+
+    // Use shadow DOM to find the element
+    const fileTextElement = shadow.getElementById('file-text-display');
+    console.log('fileTextElement found:', !!fileTextElement);
+
+    if (fileTextElement) {
+      if (uploadedFileName && storedContent) {
+        // Show filename with a clear indicator
+        fileTextElement.textContent = `📎 ${uploadedFileName}`;
+        console.log('Button updated to show filename with attachment icon:', uploadedFileName);
+      } else {
+        fileTextElement.textContent = 'Add File';
+        console.log('Button updated to show "Add File"');
+      }
+    } else {
+      console.error('fileTextElement not found in shadow DOM!');
+    }
+  }
+
+  // Check for stored content on initialization
+  function checkStoredContent() {
+    const storageKey = 'floating_circle_uploaded_content';
+    const filenameKey = 'floating_circle_uploaded_filename';
+
+    const storedText = localStorage.getItem(storageKey);
+    const storedFilename = localStorage.getItem(filenameKey);
+
+    if (storedText && storedFilename) {
+      uploadedFileName = storedFilename;
+      storedContent = storedText;
+      updateFileButtonUI();
+      console.log('Found stored content:', storedText.substring(0, 100) + '...');
+      console.log('Stored filename:', storedFilename);
+    }
+  }
+
+  // Remove stored content and reset UI
+  function removeStoredContent() {
+    const storageKey = 'floating_circle_uploaded_content';
+    const filenameKey = 'floating_circle_uploaded_filename';
+
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(filenameKey);
+
+    uploadedFileName = null;
+    storedContent = null;
+    updateFileButtonUI();
+
+    console.log('Stored content removed and UI reset');
+  }
 
   shadow.appendChild(style);
   shadow.appendChild(container);
@@ -255,6 +321,11 @@
   let proofreaderSession = null;
   let hideTimeout = null; // Debounce hiding
   let isProofreading = false; // Track if proofreading is in progress
+  let uploadedFileName = null; // Track uploaded file name
+  let storedContent = null; // Track stored content
+
+  // Initialize stored content check after variables are declared
+  checkStoredContent();
 
   function isTextEditable(el) {
     if (!el) return false;
@@ -354,25 +425,56 @@
     }
   }
 
+  // Parsing functions from resume_parser
+  async function parseTXT(file) {
+    return await file.text();
+  }
+
+
+
+
   // Process uploaded file and extract text
   async function processUploadedFile(file) {
     console.log('Processing uploaded file:', file.name, 'Type:', file.type);
 
     try {
-      const text = await file.text();
+      const ext = file.name.split('.').pop().toLowerCase();
+      let text = "";
+
+      if (ext === "txt") {
+        text = await parseTXT(file);
+      } else {
+        throw new Error("Unsupported file type. Please upload a .txt file.");
+      }
 
       if (text.trim()) {
         console.log('Extracted text from file:', text.substring(0, 100) + '...');
         console.log('Full extracted text:', text);
         console.log('Text length:', text.length, 'characters');
-        console.log('File content extracted successfully - check console for full text');
+
+        // Store content in localStorage
+        const storageKey = 'floating_circle_uploaded_content';
+        localStorage.setItem(storageKey, text);
+        localStorage.setItem('floating_circle_uploaded_filename', file.name);
+
+        // Update UI
+        uploadedFileName = file.name;
+        storedContent = text;
+
+        // Add a small delay to ensure DOM is ready
+        setTimeout(() => {
+          updateFileButtonUI();
+          console.log('UI updated after file processing');
+        }, 100);
+
+        console.log('File content extracted and stored successfully');
       } else {
         console.log('No text content found in file');
         alert('No readable text found in the file. Please try a different file or ensure the file contains text content.');
       }
     } catch (error) {
       console.error('Error processing file:', error);
-      alert('Error reading file. Please make sure it\'s a valid text file.');
+      alert('Error reading file: ' + error.message);
     }
   }
 
@@ -604,7 +706,16 @@
   fileUploadRectangle.addEventListener('click', (e) => {
     e.stopPropagation();
     console.log('File upload rectangle clicked');
-    hiddenFileInput.click();
+
+    if (uploadedFileName && storedContent) {
+      // If file is already uploaded, remove it
+      console.log('Removing stored content for file:', uploadedFileName);
+      removeStoredContent();
+    } else {
+      // If no file uploaded, open file picker
+      console.log('Opening file picker');
+      hiddenFileInput.click();
+    }
   });
 
   // Handle file selection
@@ -613,8 +724,9 @@
     if (file) {
       console.log('File selected:', file.name);
       processUploadedFile(file);
+      // Clear the input so the same file can be selected again if needed
+      e.target.value = '';
     }
   });
-
 
 })();
