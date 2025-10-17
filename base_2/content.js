@@ -262,7 +262,7 @@
     fileIcon.textContent = '×';
 
     const fileText = document.createElement('span');
-    fileText.textContent = 'Add File';
+    fileText.textContent = 'No File';
     fileText.id = 'file-text-display';
 
     fileUploadRectangle.appendChild(fileIcon);
@@ -339,6 +339,9 @@
     // Make updateFileButtonUI globally accessible for popup
     window.updateFileButtonUI = updateFileButtonUI;
 
+    // Make validateTextSelection globally accessible for other flows
+    window.validateTextSelection = validateTextSelection;
+
     // Listen for messages from popup
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.action === 'documentParsed') {
@@ -386,6 +389,7 @@
     let isProofreading = false; // Track if proofreading is in progress
     let uploadedFileName = null; // Track uploaded file name
     let storedContent = null; // Track stored content
+    let lastSelection = null; // Store the last text selection before button click
 
     // Initialize stored content check after variables are declared
     checkStoredContent();
@@ -485,6 +489,59 @@
         el.dispatchEvent(new Event('change', { bubbles: true }));
       } else {
         console.error('setTextToElement: Unsupported element type:', el.tagName);
+      }
+    }
+
+    // Replace selected text within an element with corrected text
+    function replaceSelectedTextInElement(el, originalText, correctedText) {
+      if (!el) {
+        console.error('replaceSelectedTextInElement: No element provided');
+        return;
+      }
+
+      console.log('replaceSelectedTextInElement: Replacing text in element:', el.tagName);
+      console.log('Original text:', originalText);
+      console.log('Corrected text:', correctedText);
+
+      if (el.isContentEditable || el.classList.contains('editable') || el.getAttribute('role') === 'textbox') {
+        // For contenteditable elements, get the current text content
+        const currentText = el.textContent || el.innerText || '';
+
+        // Replace the first occurrence of the original text with corrected text
+        const newText = currentText.replace(originalText, correctedText);
+
+        if (el.tagName === 'DIV') {
+          // For DIV elements: convert line breaks to HTML for proper formatting
+          const htmlText = newText.replace(/\n/g, '<br>');
+          el.innerHTML = htmlText;
+          console.log('replaceSelectedTextInElement: Set DIV innerHTML to:', el.innerHTML);
+        } else {
+          // For other contenteditable elements: use textContent
+          el.textContent = newText;
+          console.log('replaceSelectedTextInElement: Set contenteditable textContent to:', el.textContent);
+        }
+
+        // Dispatch multiple events to ensure the change is recognized
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('keyup', { bubbles: true }));
+
+        // Focus the element to ensure it's active
+        el.focus();
+      } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        // For regular input/textarea elements
+        const currentValue = el.value || '';
+
+        // Replace the first occurrence of the original text with corrected text
+        const newValue = currentValue.replace(originalText, correctedText);
+        el.value = newValue;
+
+        console.log('replaceSelectedTextInElement: Set input/textarea value to:', el.value);
+
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        console.error('replaceSelectedTextInElement: Unsupported element type:', el.tagName);
       }
     }
 
@@ -662,20 +719,99 @@ Generate a complete cover letter that the candidate can use for this job applica
       }
     }
 
+    // Validate text selection from focused input element
+    function validateTextSelection() {
+      console.log('Validating text selection...');
+
+      // Step 1: Check if some text is selected (current selection or stored selection)
+      const selection = window.getSelection();
+      let selectedText = selection.toString().trim();
+      let focusedElement = originalInputElement || lastFocusedElement;
+
+      // If no current selection, try to use the stored selection
+      if (!selectedText && lastSelection && lastSelection.text) {
+        console.log('Using stored selection:', lastSelection.text);
+        selectedText = lastSelection.text;
+        focusedElement = lastSelection.element;
+      }
+
+      // Step 2: Validate that we have a focused input element
+      if (!focusedElement) {
+        console.log('No focused input element found');
+        return {
+          isValid: false,
+          error: 'No text input field is focused. Please focus on a text field first.',
+          selectedText: null,
+          focusedElement: null
+        };
+      }
+
+      if (!isTextEditable(focusedElement)) {
+        console.log('Focused element is not text editable');
+        return {
+          isValid: false,
+          error: 'Focused element is not a text input field.',
+          selectedText: null,
+          focusedElement: null
+        };
+      }
+
+      // Step 3: If no text is selected, use all text from the focused element
+      if (!selectedText) {
+        console.log('No text selected, using all text from focused element');
+        const elementText = getTextFromElement(focusedElement);
+
+        if (!elementText || elementText.trim().length === 0) {
+          console.log('Focused element has no text content');
+          return {
+            isValid: false,
+            error: 'No text found in the focused input field.',
+            selectedText: null,
+            focusedElement: null
+          };
+        }
+
+        selectedText = elementText;
+        console.log('Using all text from element:', selectedText);
+      } else {
+        // Step 4: If text is selected, validate that it's from the focused element
+        const elementText = getTextFromElement(focusedElement);
+        if (!elementText.includes(selectedText)) {
+          console.log('Selected text is not from the focused input element');
+          return {
+            isValid: false,
+            error: 'Selected text must be from the currently focused text input field.',
+            selectedText: null,
+            focusedElement: null
+          };
+        }
+        console.log('Selected text validated:', selectedText);
+      }
+
+      console.log('Text validation passed');
+      return {
+        isValid: true,
+        error: null,
+        selectedText: selectedText,
+        focusedElement: focusedElement
+      };
+    }
+
     // Perform proofreading and apply directly
     async function performAndApplyProofreading() {
       console.log('Starting proofreading...');
-      if (!originalInputElement) {
-        console.error('No original input element found');
+
+      // First validate text selection
+      const validation = validateTextSelection();
+      if (!validation.isValid) {
+        alert(validation.error);
         return;
       }
 
-      const text = getTextFromElement(originalInputElement);
-      console.log('Text to proofread:', text);
-      if (!text.trim()) {
-        console.log('No text to proofread - skipping proofreading');
-        return;
-      }
+      const selectedText = validation.selectedText;
+      const focusedElement = validation.focusedElement;
+
+      console.log('Text to proofread:', selectedText);
 
       // Set proofreading flag to prevent interference
       isProofreading = true;
@@ -687,23 +823,37 @@ Generate a complete cover letter that the candidate can use for this job applica
           throw new Error('Failed to initialize proofreader');
         }
 
-        // Perform proofreading
-        const proofreadResult = await session.proofread(text);
+        // Perform proofreading on the text (selected or all)
+        const proofreadResult = await session.proofread(selectedText);
 
         if (proofreadResult && proofreadResult.correctedInput) {
           const correctedText = proofreadResult.correctedInput;
           console.log('Proofreading completed - applying corrections');
 
-          // Apply the corrected text directly
-          if (correctedText !== text) {
-            setTextToElement(originalInputElement, correctedText);
+          // Check if we're working with selected text or all text
+          const elementText = getTextFromElement(focusedElement);
+          const isSelectedText = lastSelection && lastSelection.text && elementText.includes(lastSelection.text);
+
+          if (isSelectedText && correctedText !== selectedText) {
+            // Apply corrections to selected text only
+            console.log('Applying corrections to selected text');
+            replaceSelectedTextInElement(focusedElement, selectedText, correctedText);
+          } else if (!isSelectedText && correctedText !== selectedText) {
+            // Apply corrections to all text in the element
+            console.log('Applying corrections to all text in element');
+            setTextToElement(focusedElement, correctedText);
           } else {
             console.log('No corrections needed');
           }
+
+          // Clear the stored selection after successful proofreading
+          lastSelection = null;
         }
 
       } catch (error) {
         console.error('Proofreading failed:', error);
+        // Clear stored selection on error to prevent stale data
+        lastSelection = null;
       } finally {
         // Clear proofreading flag
         isProofreading = false;
@@ -787,6 +937,24 @@ Generate a complete cover letter that the candidate can use for this job applica
       host.style.left = left + 'px';
       host.style.top = top + 'px';
     }
+
+    // Track text selection changes to preserve selection before button clicks
+    document.addEventListener('selectionchange', () => {
+      const selection = window.getSelection();
+      const selectedText = selection.toString().trim();
+
+      if (selectedText && lastFocusedElement && isTextEditable(lastFocusedElement)) {
+        // Check if the selection is within the focused element
+        const elementText = getTextFromElement(lastFocusedElement);
+        if (elementText.includes(selectedText)) {
+          lastSelection = {
+            text: selectedText,
+            element: lastFocusedElement
+          };
+          console.log('Text selection captured:', selectedText);
+        }
+      }
+    });
 
     // Track the last focused input/textarea/contenteditable (based on working implementation)
     document.addEventListener('focusin', (e) => {
