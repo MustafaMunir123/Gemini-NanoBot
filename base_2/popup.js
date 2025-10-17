@@ -199,7 +199,7 @@ documentFileInput.addEventListener('change', async (e) => {
                 'uploadedFileName': file.name,
                 'storedContent': text
             }, () => {
-                showStatus(`✅ Document parsed successfully! Extracted ${text.length} characters.`, 'success');
+                showStatus(`Document parsed\nExtracted ${text.length} characters.`, 'success');
                 console.log('Document text extracted:', text);
 
                 // Clear the file input
