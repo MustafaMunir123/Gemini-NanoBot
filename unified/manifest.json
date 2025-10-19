@@ -1,0 +1,64 @@
+{
+    "manifest_version": 3,
+    "name": "AI Text Assistant Pro",
+    "version": "2.0",
+    "description": "Combined voice-controlled text rewriting and floating text proofreading with cover letter generation",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "48": "icon48.png",
+            "128": "icon128.png"
+        }
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "commands": {
+        "toggle-recording": {
+            "suggested_key": {
+                "default": "Ctrl+Q",
+                "mac": "Command+Q"
+            },
+            "description": "Toggle voice recording for text rewriting"
+        }
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "icons": {
+        "48": "icon48.png",
+        "128": "icon128.png"
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "icon48.png",
+                "icon128.png",
+                "pdf.min.js",
+                "pdf.worker.min.js",
+                "mammoth.browser.min.js",
+                "error.mp3",
+                "success.mp3"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
+}
