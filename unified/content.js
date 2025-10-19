@@ -1686,6 +1686,8 @@ Generate a complete cover letter that the candidate can use for this job applica
             proofreader: false
         };
 
+        const missingFlags = [];
+
         try {
             // Check LanguageModel availability
             if (typeof LanguageModel !== 'undefined') {
@@ -1696,6 +1698,8 @@ Generate a complete cover letter that the candidate can use for this job applica
                     console.warn('LanguageModel availability check failed:', error);
                     results.languageModel = false;
                 }
+            } else {
+                missingFlags.push('chrome://flags/#prompt-api-for-gemini-nano');
             }
 
             // Check Writer availability
@@ -1707,6 +1711,8 @@ Generate a complete cover letter that the candidate can use for this job applica
                     console.warn('Writer availability check failed:', error);
                     results.writer = false;
                 }
+            } else {
+                missingFlags.push('chrome://flags/#writer-api-for-gemini-nano');
             }
 
             // Check Rewriter availability
@@ -1718,6 +1724,8 @@ Generate a complete cover letter that the candidate can use for this job applica
                     console.warn('Rewriter availability check failed:', error);
                     results.rewriter = false;
                 }
+            } else {
+                missingFlags.push('chrome://flags/#rewriter-api-for-gemini-nano');
             }
 
             // Check Proofreader availability
@@ -1729,7 +1737,12 @@ Generate a complete cover letter that the candidate can use for this job applica
                     console.warn('Proofreader availability check failed:', error);
                     results.proofreader = false;
                 }
+            } else {
+                missingFlags.push('chrome://flags/#proofreader-api-for-gemini-nano');
             }
+
+            // Add missing flags info to results
+            results.missingFlags = missingFlags;
 
             console.log('AI Model Status Check Results:', results);
             return results;

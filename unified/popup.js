@@ -371,12 +371,28 @@ checkStatusButton.addEventListener('click', async () => {
                 statusElements.proofreader.className = 'status-indicator error';
             }
 
-            // Check if all models are available
-            const allAvailable = Object.values(results).every(status => status === true);
+            // Check if all models are available (exclude missingFlags from the check)
+            const modelResults = {
+                languageModel: results.languageModel,
+                writer: results.writer,
+                rewriter: results.rewriter,
+                proofreader: results.proofreader
+            };
+            const allAvailable = Object.values(modelResults).every(status => status === true);
             if (allAvailable) {
                 showAIModelStatus('All AI models are ready! 🎉', 'success');
             } else {
-                showAIModelStatus('Some AI models are not available. Check chrome://flags for #prompt-api-for-gemini-nano', 'error');
+                // Generate specific flag guidance
+                let flagMessage = 'Enable these Chrome flags:\n';
+                if (results.missingFlags && results.missingFlags.length > 0) {
+                    results.missingFlags.forEach(flag => {
+                        flagMessage += `• ${flag}\n`;
+                    });
+                    flagMessage += '\nRestart Chrome after enabling flags.';
+                } else {
+                    flagMessage = 'Some AI models are not available. Check chrome://flags for AI-related flags.';
+                }
+                showAIModelStatus(flagMessage, 'error');
             }
 
         } else {
@@ -392,7 +408,7 @@ checkStatusButton.addEventListener('click', async () => {
             element.className = 'status-indicator error';
         });
 
-        showAIModelStatus('Error checking AI model status. Make sure the extension is enabled on this page.', 'error');
+        showAIModelStatus('Error checking AI model status. Make sure the extension is enabled on this page and try refreshing.', 'error');
     } finally {
         checkStatusButton.disabled = false;
         checkStatusButton.textContent = 'Check AI Model Status';
