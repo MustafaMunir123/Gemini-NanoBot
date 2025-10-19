@@ -756,6 +756,9 @@ Please generate a professional cover letter that:
 4. Is well-structured with proper greeting, body paragraphs, and closing
 5. Is professional, engaging, and tailored to this specific position
 6. Is approximately 3-4 paragraphs in length
+7. Must include info from resume like name, address, phone number, email, etc. instead of using place holders like [Name], [Address], [Phone Number], [Email] NO BRACKETS.
+
+
 
 Generate a complete cover letter that the candidate can use for this job application.`;
 
