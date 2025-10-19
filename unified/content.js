@@ -3,6 +3,12 @@
     if (window.__aiTextAssistantInjected) return;
     window.__aiTextAssistantInjected = true;
 
+    // Check if Chrome extension context is valid
+    if (!chrome || !chrome.runtime || !chrome.runtime.id) {
+        console.warn('Chrome extension context is invalid or not available');
+        return;
+    }
+
     console.log("AI Text Assistant Pro loaded");
 
     // ============================================================================
@@ -69,15 +75,41 @@
                 return;
             }
 
-            if (el.isContentEditable || el.classList.contains('editable') || el.getAttribute('role') === 'textbox') {
-                const currentText = el.textContent || el.innerText || '';
-                const newText = currentText.replace(originalText, correctedText);
+            console.log('replaceSelectedTextInElement called:', {
+                originalText: originalText,
+                correctedText: correctedText,
+                elementTag: el.tagName
+            });
 
-                if (el.tagName === 'DIV') {
-                    const htmlText = newText.replace(/\n/g, '<br>');
-                    el.innerHTML = htmlText;
+            if (el.isContentEditable || el.classList.contains('editable') || el.getAttribute('role') === 'textbox') {
+                // For contentEditable elements, use the browser's selection API to replace only selected text
+                const selection = window.getSelection();
+
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+
+                    // Check if the selection is within our target element
+                    if (el.contains(range.commonAncestorContainer) || el === range.commonAncestorContainer) {
+                        // Replace the selected content
+                        range.deleteContents();
+
+                        // Create a text node with the corrected text
+                        const textNode = document.createTextNode(correctedText);
+                        range.insertNode(textNode);
+
+                        // Clear the selection
+                        selection.removeAllRanges();
+
+                        console.log('Replaced selected text using selection API');
+                    } else {
+                        // Fallback to string replacement if selection is not in our element
+                        console.log('Selection not in target element, using fallback');
+                        this.fallbackTextReplacement(el, originalText, correctedText);
+                    }
                 } else {
-                    el.textContent = newText;
+                    // No selection, use fallback
+                    console.log('No selection found, using fallback');
+                    this.fallbackTextReplacement(el, originalText, correctedText);
                 }
 
                 el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -91,6 +123,107 @@
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
             }
+        },
+
+        fallbackTextReplacement(el, originalText, correctedText) {
+            const currentText = el.textContent || el.innerText || '';
+            const newText = currentText.replace(originalText, correctedText);
+
+            console.log('Fallback text replacement:', {
+                currentText: currentText,
+                newText: newText,
+                replacementMade: currentText !== newText
+            });
+
+            if (el.tagName === 'DIV') {
+                // For DIV elements, preserve HTML formatting by converting newlines to <br>
+                const htmlText = newText.replace(/\n/g, '<br>');
+                el.innerHTML = htmlText;
+            } else {
+                el.textContent = newText;
+            }
+        }
+    };
+
+    // ============================================================================
+    // CHROME API SAFETY UTILITIES
+    // ============================================================================
+
+    const ChromeAPI = {
+        // Safely call chrome.storage.local.set
+        async setStorage(key, value) {
+            return new Promise((resolve, reject) => {
+                try {
+                    chrome.storage.local.set({ [key]: value }, () => {
+                        if (chrome.runtime.lastError) {
+                            console.warn('Chrome storage set error:', chrome.runtime.lastError);
+                            resolve(false);
+                        } else {
+                            resolve(true);
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Chrome API call failed:', error);
+                    resolve(false);
+                }
+            });
+        },
+
+        // Safely call chrome.storage.local.get
+        async getStorage(keys) {
+            return new Promise((resolve) => {
+                try {
+                    chrome.storage.local.get(keys, (result) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn('Chrome storage get error:', chrome.runtime.lastError);
+                            resolve(null);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Chrome API call failed:', error);
+                    resolve(null);
+                }
+            });
+        },
+
+        // Safely call chrome.storage.local.remove
+        async removeStorage(keys) {
+            return new Promise((resolve) => {
+                try {
+                    chrome.storage.local.remove(keys, () => {
+                        if (chrome.runtime.lastError) {
+                            console.warn('Chrome storage remove error:', chrome.runtime.lastError);
+                            resolve(false);
+                        } else {
+                            resolve(true);
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Chrome API call failed:', error);
+                    resolve(false);
+                }
+            });
+        },
+
+        // Safely send message to tabs
+        async sendMessage(tabId, message) {
+            return new Promise((resolve) => {
+                try {
+                    chrome.tabs.sendMessage(tabId, message, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn('Chrome tabs sendMessage error:', chrome.runtime.lastError);
+                            resolve(false);
+                        } else {
+                            resolve(true);
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Chrome API call failed:', error);
+                    resolve(false);
+                }
+            });
         }
     };
 
@@ -314,7 +447,7 @@
                         return;
                     }
 
-                    chrome.storage.local.set({ voiceControlEnabled: true });
+                    ChromeAPI.setStorage('voiceControlEnabled', true);
 
                     if (!extensionState.isVoiceListening) {
                         extensionState.isVoiceListening = true;
@@ -414,22 +547,101 @@
             };
         },
 
+        async determineOperationType(instructions) {
+            if (typeof LanguageModel === "undefined") {
+                // Fallback: if LanguageModel is not available, assume it's a WRITE operation
+                return true;
+            }
+
+            try {
+                const modelAvailability = await LanguageModel.availability();
+                if (modelAvailability === "unavailable") {
+                    return true; // Default to WRITE if model unavailable
+                }
+
+                const session = await LanguageModel.create({
+                    outputLanguage: "en",
+                    monitor(m) {
+                        m.addEventListener("downloadprogress", (e) => {
+                            console.log(`Downloaded ${e.loaded * 100}%`);
+                        });
+                    },
+                });
+
+                const instructionTypePrompt = `
+        You are an instruction analyzer. Based on the following user instruction, determine whether it is asking for WRITING new content or REWRITING existing content.
+        
+        WRITING instructions ask to CREATE NEW CONTENT from scratch, such as:
+        - "Write an email to..."
+        - "Create a story about..."
+        - "Compose a letter..."
+        - "Generate content about..."
+        - "Write a summary of..."
+        
+        REWRITING instructions ask to IMPROVE OR MODIFY EXISTING TEXT, such as:
+        - "Make this more formal"
+        - "Improve this text"
+        - "Change the tone to..."
+        - "Rewrite this paragraph"
+        
+        Key distinction: If the instruction asks to CREATE something new, it's WRITING. If it asks to IMPROVE existing text, it's REWRITING.
+        
+        Respond with exactly one word: either "WRITING" or "REWRITING"
+        
+        Instruction: "${instructions}"
+        `;
+
+                const instructionTypeResponse = await session.prompt(instructionTypePrompt, { outputLanguage: "en" });
+                const instructionType = instructionTypeResponse.trim().toUpperCase();
+                session.destroy();
+
+                return instructionType === "WRITING";
+            } catch (error) {
+                console.warn('Error determining operation type:', error);
+                return true; // Default to WRITE on error
+            }
+        },
+
         async processVoiceCommand() {
             if (!this.recognizedText) {
                 NotificationSystem.showToast("No speech detected", 'error');
                 return;
             }
 
-            const validation = this.validateTextSelection();
-            if (!validation.isValid) {
-                NotificationSystem.showToast(validation.error, 'error');
-                return;
+            // First, determine if this is a WRITE or REWRITE operation
+            const isWriteOperation = await this.determineOperationType(this.recognizedText);
+
+            let selectedText = "";
+            let focusedElement = this.lastFocusedInput;
+
+            if (isWriteOperation) {
+                // For WRITE operations, we don't need existing text - just a focused input field
+                if (!focusedElement || !DOMUtils.isTextEditable(focusedElement)) {
+                    NotificationSystem.showToast('No text input field is focused', 'error');
+                    return;
+                }
+                // For WRITE operations, we can use empty text or any selected text as context
+                selectedText = this.lastSelection ? this.lastSelection.text : "";
+            } else {
+                // For REWRITE operations, we need existing text to rewrite
+                const validation = this.validateTextSelection();
+                if (!validation.isValid) {
+                    NotificationSystem.showToast(validation.error, 'error');
+                    return;
+                }
+                selectedText = validation.selectedText;
+                focusedElement = validation.focusedElement;
             }
 
-            const selectedText = validation.selectedText;
-            const focusedElement = validation.focusedElement;
+            // Check if document context will be used
+            const documentData = await this.getStoredDocumentContent();
+            const willUseDocumentContext = documentData && documentData.content;
 
-            NotificationSystem.showToast("Processing...", 'info', 4000);
+            if (willUseDocumentContext) {
+                NotificationSystem.showToast(`Processing with document context (${documentData.fileName})...`, 'info', 4000);
+            } else {
+                NotificationSystem.showToast("Processing...", 'info', 4000);
+            }
 
             try {
                 const response = await this.rewriteText(selectedText, this.recognizedText);
@@ -440,24 +652,53 @@
                     'success'
                 );
 
+                // Check current selection at the time of processing
+                const currentSelection = window.getSelection();
+                const currentSelectedText = currentSelection.toString().trim();
                 const elementText = DOMUtils.getTextFromElement(focusedElement);
-                const isSelectedText = this.lastSelection && this.lastSelection.text && elementText.includes(this.lastSelection.text);
 
-                if (isSelectedText && result !== selectedText) {
+                // Determine if we should replace only selected text or full content
+                const shouldReplaceSelectedOnly = currentSelectedText &&
+                    elementText.includes(currentSelectedText) &&
+                    currentSelectedText === selectedText;
+
+                console.log('Selection detection:', {
+                    currentSelectedText: currentSelectedText,
+                    selectedText: selectedText,
+                    elementText: elementText,
+                    shouldReplaceSelectedOnly: shouldReplaceSelectedOnly,
+                    result: result
+                });
+
+                if (shouldReplaceSelectedOnly) {
+                    // For selected text, use replaceSelectedTextInElement but with proper formatting
+                    console.log('Replacing selected text only');
                     DOMUtils.replaceSelectedTextInElement(focusedElement, selectedText, result);
-                } else if (!isSelectedText && result !== selectedText) {
-                    DOMUtils.setTextToElement(focusedElement, result);
                 } else {
-                    NotificationSystem.showToast('No changes needed', 'success');
+                    // For full content, always use setTextToElement for proper formatting
+                    console.log('Replacing full content');
+                    DOMUtils.setTextToElement(focusedElement, result);
                 }
 
                 this.recognizedText = "";
-                this.lastSelection = null;
             } catch (err) {
                 console.error(err);
                 NotificationSystem.showToast(`Error: ${err.message}`, 'error');
+            } finally {
+                // Clear selection after processing
                 this.lastSelection = null;
             }
+        },
+
+        async getStoredDocumentContent() {
+            const result = await ChromeAPI.getStorage(['uploadedFileName', 'storedContent']);
+            if (result && result.uploadedFileName && result.storedContent) {
+                return {
+                    fileName: result.uploadedFileName,
+                    content: result.storedContent
+                };
+            }
+            return null;
         },
 
         async rewriteText(inputText, instructions) {
@@ -532,10 +773,25 @@
 
                 let result;
                 try {
+                    // Check for stored document content to use as context
+                    const documentData = await this.getStoredDocumentContent();
+
                     const writeOptions = {};
-                    if (inputText && inputText.trim()) {
-                        writeOptions.context = inputText;
+                    let contextText = '';
+
+                    // Build context from document content and input text
+                    if (documentData && documentData.content) {
+                        contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
                     }
+
+                    if (inputText && inputText.trim()) {
+                        contextText += `Current Input: ${inputText}`;
+                    }
+
+                    if (contextText.trim()) {
+                        writeOptions.context = contextText.trim();
+                    }
+
                     result = await writer.write(instructions, writeOptions);
                 } catch (writeError) {
                     console.error("Writer API error:", writeError);
@@ -667,6 +923,25 @@
           pointer-events: auto;
           cursor: pointer;
         }
+          .container::after {
+  content: 'Click to proofread';
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: black;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.container:hover::after {
+  opacity: 1;
+}
         .container.visible {
           transform: scale(1);
           opacity: 1;
@@ -777,6 +1052,18 @@
           font-size: 7px;
           font-weight: bold;
         }
+          .loader {
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #555;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
       `;
 
             this.container = document.createElement('div');
@@ -956,8 +1243,8 @@
             this.coverLetterRectangle.addEventListener('click', (e) => {
                 e.stopPropagation();
 
-                chrome.storage.local.get(['uploadedFileName', 'storedContent'], (result) => {
-                    if (!result.uploadedFileName || !result.storedContent) {
+                ChromeAPI.getStorage(['uploadedFileName', 'storedContent']).then((result) => {
+                    if (!result || !result.uploadedFileName || !result.storedContent) {
                         NotificationSystem.showToast('No file attached. Please upload a document first.', 'error');
                         return;
                     }
@@ -1065,7 +1352,9 @@
                 if (!session) {
                     throw new Error('Failed to initialize proofreader');
                 }
-
+                const icon = this.container.querySelector('.icon');
+                icon.classList.add('loader');
+                icon.style.backgroundImage = 'none';
                 const proofreadResult = await session.proofread(selectedText);
 
                 if (proofreadResult && proofreadResult.correctedInput) {
@@ -1093,7 +1382,11 @@
                 this.lastSelection = null;
             } finally {
                 extensionState.isProofreading = false;
-
+                const icon = this.container.querySelector('.loader');
+                if (icon) {
+                    icon.classList.remove('loader');
+                    this.initializeIcon(icon); // restore original icon48
+                }
                 if (this.proofreaderSession) {
                     try {
                         this.proofreaderSession.destroy();
@@ -1322,8 +1615,8 @@ Generate a complete cover letter that the candidate can use for this job applica
         },
 
         checkStoredContent() {
-            chrome.storage.local.get(['uploadedFileName', 'storedContent'], (result) => {
-                if (result.uploadedFileName && result.storedContent) {
+            ChromeAPI.getStorage(['uploadedFileName', 'storedContent']).then((result) => {
+                if (result && result.uploadedFileName && result.storedContent) {
                     this.uploadedFileName = result.uploadedFileName;
                     this.storedContent = result.storedContent;
                     this.updateFileButtonUI();
@@ -1344,11 +1637,13 @@ Generate a complete cover letter that the candidate can use for this job applica
         },
 
         removeStoredContent() {
-            chrome.storage.local.remove(['uploadedFileName', 'storedContent'], () => {
+            ChromeAPI.removeStorage(['uploadedFileName', 'storedContent']).then((success) => {
                 this.uploadedFileName = null;
                 this.storedContent = null;
                 this.updateFileButtonUI();
-                NotificationSystem.showToast('File removed', 'success');
+                if (success) {
+                    NotificationSystem.showToast('File removed', 'success');
+                }
             });
         }
     };
@@ -1358,43 +1653,54 @@ Generate a complete cover letter that the candidate can use for this job applica
     // ============================================================================
 
     // Initialize extension state from storage
-    chrome.storage.local.get(['voiceControlEnabled', 'floatingIndicatorEnabled'], (result) => {
-        extensionState.voiceControlEnabled = result.voiceControlEnabled !== false;
-        extensionState.floatingIndicatorEnabled = result.floatingIndicatorEnabled === true;
+    ChromeAPI.getStorage(['voiceControlEnabled', 'floatingIndicatorEnabled']).then((result) => {
+        if (result) {
+            extensionState.voiceControlEnabled = result.voiceControlEnabled !== false;
+            extensionState.floatingIndicatorEnabled = result.floatingIndicatorEnabled === true;
 
-        // Initialize flows based on state
-        if (extensionState.voiceControlEnabled) {
+            // Initialize flows based on state
+            if (extensionState.voiceControlEnabled) {
+                VoiceControlFlow.init();
+            }
+
+            if (extensionState.floatingIndicatorEnabled) {
+                FloatingIndicatorFlow.init();
+            }
+        } else {
+            // Default values if storage fails
+            extensionState.voiceControlEnabled = true;
+            extensionState.floatingIndicatorEnabled = false;
             VoiceControlFlow.init();
-        }
-
-        if (extensionState.floatingIndicatorEnabled) {
-            FloatingIndicatorFlow.init();
         }
     });
 
     // Listen for state changes from popup
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        if (request.action === 'toggleVoiceControl') {
-            extensionState.voiceControlEnabled = request.enabled;
-            if (request.enabled) {
-                VoiceControlFlow.init();
-            }
-            sendResponse({ success: true });
-        } else if (request.action === 'toggleFloatingIndicator') {
-            extensionState.floatingIndicatorEnabled = request.enabled;
-            if (request.enabled) {
-                FloatingIndicatorFlow.init();
-            } else {
-                if (FloatingIndicatorFlow.host) {
-                    FloatingIndicatorFlow.host.remove();
+    try {
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+            if (request.action === 'toggleVoiceControl') {
+                extensionState.voiceControlEnabled = request.enabled;
+                if (request.enabled) {
+                    VoiceControlFlow.init();
                 }
+                sendResponse({ success: true });
+            } else if (request.action === 'toggleFloatingIndicator') {
+                extensionState.floatingIndicatorEnabled = request.enabled;
+                if (request.enabled) {
+                    FloatingIndicatorFlow.init();
+                } else {
+                    if (FloatingIndicatorFlow.host) {
+                        FloatingIndicatorFlow.host.remove();
+                    }
+                }
+                sendResponse({ success: true });
+            } else if (request.action === 'documentParsed') {
+                FloatingIndicatorFlow.checkStoredContent();
+                sendResponse({ success: true });
             }
-            sendResponse({ success: true });
-        } else if (request.action === 'documentParsed') {
-            FloatingIndicatorFlow.checkStoredContent();
-            sendResponse({ success: true });
-        }
-    });
+        });
+    } catch (error) {
+        console.warn('Chrome runtime message listener setup failed:', error);
+    }
 
     // Make functions globally accessible for popup communication
     window.updateFileButtonUI = () => FloatingIndicatorFlow.updateFileButtonUI();
