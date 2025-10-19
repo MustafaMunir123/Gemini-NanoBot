@@ -7,6 +7,9 @@ const floatingToggle = document.getElementById("floating-toggle");
 const documentFileInput = document.getElementById("document-file");
 const parseDocumentButton = document.getElementById("parse-document");
 const statusDiv = document.getElementById("status");
+const checkStatusButton = document.getElementById("check-status");
+const modelStatusDiv = document.getElementById("model-status");
+const aiModelStatusMessage = document.getElementById("ai-model-status-message");
 
 // ============================================================================
 // INITIALIZATION
@@ -284,4 +287,118 @@ window.addEventListener('load', () => {
 // Handle popup close
 window.addEventListener('beforeunload', () => {
     console.log('Nano Bot popup closing');
+});
+
+// ============================================================================
+// AI MODEL STATUS CHECKING
+// ============================================================================
+
+// Helper function to show status in AI Model Status section
+function showAIModelStatus(message, type = 'info') {
+    aiModelStatusMessage.textContent = message;
+    aiModelStatusMessage.className = `status ${type}`;
+    aiModelStatusMessage.style.display = 'block';
+
+    // Auto-hide after 5 seconds for success messages
+    if (type === 'success') {
+        setTimeout(() => {
+            aiModelStatusMessage.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// Check AI model status
+checkStatusButton.addEventListener('click', async () => {
+    checkStatusButton.disabled = true;
+    checkStatusButton.textContent = 'Checking...';
+    modelStatusDiv.style.display = 'block';
+
+    // Reset all status indicators
+    const statusElements = {
+        languageModel: document.getElementById('language-model-status'),
+        writer: document.getElementById('writer-status'),
+        rewriter: document.getElementById('rewriter-status'),
+        proofreader: document.getElementById('proofreader-status')
+    };
+
+    // Set all to checking state
+    Object.values(statusElements).forEach(element => {
+        element.textContent = '⏳ Checking...';
+        element.className = 'status-indicator checking';
+    });
+
+    try {
+        // Get the current active tab
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !tab.id) {
+            throw new Error('No active tab found');
+        }
+
+        // Send message to content script to check AI model status
+        const response = await chrome.tabs.sendMessage(tab.id, {
+            action: 'checkAIModelStatus'
+        });
+
+        if (response && response.success) {
+            const results = response.results;
+
+            // Update status indicators based on results
+            if (results.languageModel) {
+                statusElements.languageModel.textContent = '✅ Available';
+                statusElements.languageModel.className = 'status-indicator success';
+            } else {
+                statusElements.languageModel.textContent = '❌ Unavailable';
+                statusElements.languageModel.className = 'status-indicator error';
+            }
+
+            if (results.writer) {
+                statusElements.writer.textContent = '✅ Available';
+                statusElements.writer.className = 'status-indicator success';
+            } else {
+                statusElements.writer.textContent = '❌ Unavailable';
+                statusElements.writer.className = 'status-indicator error';
+            }
+
+            if (results.rewriter) {
+                statusElements.rewriter.textContent = '✅ Available';
+                statusElements.rewriter.className = 'status-indicator success';
+            } else {
+                statusElements.rewriter.textContent = '❌ Unavailable';
+                statusElements.rewriter.className = 'status-indicator error';
+            }
+
+            if (results.proofreader) {
+                statusElements.proofreader.textContent = '✅ Available';
+                statusElements.proofreader.className = 'status-indicator success';
+            } else {
+                statusElements.proofreader.textContent = '❌ Unavailable';
+                statusElements.proofreader.className = 'status-indicator error';
+            }
+
+            // Check if all models are available
+            const allAvailable = Object.values(results).every(status => status === true);
+            if (allAvailable) {
+                showAIModelStatus('All AI models are ready! 🎉', 'success');
+            } else {
+                showAIModelStatus('Some AI models are not available. Check chrome://flags for #prompt-api-for-gemini-nano', 'error');
+            }
+
+        } else {
+            throw new Error('Failed to check AI model status');
+        }
+
+    } catch (error) {
+        console.error('Error checking AI model status:', error);
+
+        // Set all to error state
+        Object.values(statusElements).forEach(element => {
+            element.textContent = '❌ Error';
+            element.className = 'status-indicator error';
+        });
+
+        showAIModelStatus('Error checking AI model status. Make sure the extension is enabled on this page.', 'error');
+    } finally {
+        checkStatusButton.disabled = false;
+        checkStatusButton.textContent = 'Check AI Model Status';
+    }
 });

@@ -1674,6 +1674,72 @@ Generate a complete cover letter that the candidate can use for this job applica
         }
     });
 
+    // ============================================================================
+    // AI MODEL STATUS CHECKING FUNCTION
+    // ============================================================================
+
+    async function checkAIModelStatus() {
+        const results = {
+            languageModel: false,
+            writer: false,
+            rewriter: false,
+            proofreader: false
+        };
+
+        try {
+            // Check LanguageModel availability
+            if (typeof LanguageModel !== 'undefined') {
+                try {
+                    const languageModelAvailability = await LanguageModel.availability();
+                    results.languageModel = languageModelAvailability !== 'unavailable';
+                } catch (error) {
+                    console.warn('LanguageModel availability check failed:', error);
+                    results.languageModel = false;
+                }
+            }
+
+            // Check Writer availability
+            if (typeof Writer !== 'undefined') {
+                try {
+                    const writerAvailability = await Writer.availability();
+                    results.writer = writerAvailability !== 'unavailable';
+                } catch (error) {
+                    console.warn('Writer availability check failed:', error);
+                    results.writer = false;
+                }
+            }
+
+            // Check Rewriter availability
+            if (typeof Rewriter !== 'undefined') {
+                try {
+                    const rewriterAvailability = await Rewriter.availability();
+                    results.rewriter = rewriterAvailability !== 'unavailable';
+                } catch (error) {
+                    console.warn('Rewriter availability check failed:', error);
+                    results.rewriter = false;
+                }
+            }
+
+            // Check Proofreader availability
+            if (typeof Proofreader !== 'undefined') {
+                try {
+                    const proofreaderAvailability = await Proofreader.availability();
+                    results.proofreader = proofreaderAvailability !== 'unavailable';
+                } catch (error) {
+                    console.warn('Proofreader availability check failed:', error);
+                    results.proofreader = false;
+                }
+            }
+
+            console.log('AI Model Status Check Results:', results);
+            return results;
+
+        } catch (error) {
+            console.error('Error during AI model status check:', error);
+            throw error;
+        }
+    }
+
     // Listen for state changes from popup
     try {
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1696,6 +1762,15 @@ Generate a complete cover letter that the candidate can use for this job applica
             } else if (request.action === 'documentParsed') {
                 FloatingIndicatorFlow.checkStoredContent();
                 sendResponse({ success: true });
+            } else if (request.action === 'checkAIModelStatus') {
+                // Handle AI model status check
+                checkAIModelStatus().then(results => {
+                    sendResponse({ success: true, results });
+                }).catch(error => {
+                    console.error('Error checking AI model status:', error);
+                    sendResponse({ success: false, error: error.message });
+                });
+                return true; // Keep message channel open for async response
             }
         });
     } catch (error) {

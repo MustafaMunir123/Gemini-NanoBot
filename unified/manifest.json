@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "Nano Bot",
     "version": "2.0",
-    "description": "Combined voice-controlled text rewriting and floating text proofreading with cover letter generation",
+    "description": "Gemini Nano powered voice-controlled text rewriting, generation and text proofreading with cover letter generation and many other potential usecases.",
     "permissions": [
         "activeTab",
         "scripting",

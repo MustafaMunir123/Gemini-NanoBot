@@ -192,13 +192,48 @@
             background: #e9ecef;
             margin: 15px 0;
         }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            font-weight: 500;
+            font-size: 12px;
+            color: #333;
+        }
+
+        .status-indicator {
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-indicator.checking {
+            color: #ff9800;
+        }
+
+        .status-indicator.success {
+            color: #4caf50;
+        }
+
+        .status-indicator.error {
+            color: #f44336;
+        }
     </style>
 </head>
 
 <body>
     <div class="header">
-        <h1>🎤 Nano Bot</h1>
-        <p>Voice Control + Text Proofreading</p>
+        <h1><img src="bot.png" alt="Nano Bot"
+                style="width: 25px; height: 25px; vertical-align: middle; margin-right: 8px;">Nano Bot</h1>
     </div>
 
     <!-- Voice Control Section -->
@@ -211,12 +246,10 @@
 
         <div class="info-box">
             Press <span class="shortcut">Ctrl+Q</span> to start/stop voice input.
-            The extension auto-enables on first use!
         </div>
 
         <div class="feature-description">
-            Use voice commands to rewrite or generate text using Chrome's AI APIs.
-            Works with any text input field on any website.
+            Use voice commands to rewrite or generate text.
         </div>
     </div>
 
@@ -233,8 +266,7 @@
         </div>
 
         <div class="feature-description">
-            Shows a floating circle next to text inputs for AI-powered proofreading
-            and cover letter generation.
+            Shows a floating circle next to text inputs.
         </div>
 
         <div class="file-section">
@@ -242,6 +274,42 @@
             <input type="file" id="document-file" accept=".pdf,.txt,.docx" style="display: none;">
             <button id="parse-document">Add Document</button>
             <div id="status" class="status" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- AI Model Status Section -->
+    <div class="section">
+        <h3>
+            AI Model Status
+        </h3>
+
+        <div class="control-group">
+            <button id="check-status" style="width: 100%; margin-bottom: 10px;">Check AI Model Status</button>
+        </div>
+
+        <div id="model-status" style="display: none;">
+            <div class="status-item">
+                <span class="status-label">Prompt API:</span>
+                <span id="language-model-status" class="status-indicator">⏳ Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Writer API:</span>
+                <span id="writer-status" class="status-indicator">⏳ Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Rewriter API:</span>
+                <span id="rewriter-status" class="status-indicator">⏳ Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Proofreader API:</span>
+                <span id="proofreader-status" class="status-indicator">⏳ Checking...</span>
+            </div>
+        </div>
+
+        <div id="ai-model-status-message" class="status" style="display: none;"></div>
+
+        <div class="feature-description">
+            Check if all AI models are downloaded and ready to use.
         </div>
     </div>
 
