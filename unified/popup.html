@@ -132,7 +132,7 @@
         }
 
         button {
-            width: 100%;
+            width: 85%;
             padding: 8px 12px;
             background: #007bff;
             color: white;
@@ -142,6 +142,8 @@
             font-size: 12px;
             font-weight: 500;
             transition: background-color 0.2s;
+            margin: 0 auto;
+            display: block;
         }
 
         button:hover {
@@ -227,6 +229,21 @@
         .status-indicator.error {
             color: #f44336;
         }
+
+        #how-to-button {
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+
+        #how-to-button:hover {
+            background: #5a6268;
+        }
     </style>
 </head>
 
@@ -284,7 +301,7 @@
         </h3>
 
         <div class="control-group">
-            <button id="check-status" style="width: 100%; margin-bottom: 10px;">Check AI Model Status</button>
+            <button id="check-status" style="margin-bottom: 10px;">Check AI Model Status</button>
         </div>
 
         <div id="model-status" style="display: none;">
@@ -309,8 +326,13 @@
         <div id="ai-model-status-message" class="status" style="display: none;"></div>
 
         <div class="feature-description">
-            Check if all AI models are downloaded and ready to use.
+            Check if all AI models are ready to use.
         </div>
+    </div>
+
+    <!-- How To Button -->
+    <div class="section" style="margin-top: 15px;">
+        <button id="how-to-button" style="width: 50%; margin: 0 auto; display: block;">How To ?</button>
     </div>
 
     <script src="popup.js"></script>

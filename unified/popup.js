@@ -10,6 +10,7 @@ const statusDiv = document.getElementById("status");
 const checkStatusButton = document.getElementById("check-status");
 const modelStatusDiv = document.getElementById("model-status");
 const aiModelStatusMessage = document.getElementById("ai-model-status-message");
+const howToButton = document.getElementById("how-to-button");
 
 // ============================================================================
 // INITIALIZATION
@@ -29,21 +30,17 @@ chrome.storage.local.get(["floatingIndicatorEnabled"], (result) => {
 floatingToggle.addEventListener("change", () => {
     const enabled = floatingToggle.checked;
 
-    // Save state to chrome.storage.local
     chrome.storage.local.set({ floatingIndicatorEnabled: enabled });
 
-    // Update floating indicator in the current tab
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
         if (!tab || !tab.id) return;
 
-        // Send message to content script to toggle floating indicator
         chrome.tabs.sendMessage(tab.id, {
             action: 'toggleFloatingIndicator',
             enabled: enabled
         }, (response) => {
             if (chrome.runtime.lastError) {
                 console.log('Floating indicator toggle message failed:', chrome.runtime.lastError);
-                // Fallback: inject content script if needed
                 if (enabled) {
                     chrome.scripting.executeScript({
                         target: { tabId: tab.id },
@@ -82,7 +79,6 @@ async function loadPDFJS() {
             script.onerror = reject;
         });
 
-        // Configure PDF.js worker
         pdfjsLib = window.pdfjsLib;
         pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
 
@@ -400,5 +396,30 @@ checkStatusButton.addEventListener('click', async () => {
     } finally {
         checkStatusButton.disabled = false;
         checkStatusButton.textContent = 'Check AI Model Status';
+    }
+});
+
+// ============================================================================
+// HOW TO BUTTON FUNCTIONALITY
+// ============================================================================
+
+// Handle How To button click
+howToButton.addEventListener('click', () => {
+    try {
+        // Create a download link for the howTo.pdf file
+        const downloadLink = document.createElement('a');
+        downloadLink.href = chrome.runtime.getURL('howTo.pdf');
+        downloadLink.download = 'howTo.pdf';
+        downloadLink.target = '_blank';
+
+        // Trigger the download
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        console.log('How To PDF download initiated');
+    } catch (error) {
+        console.error('Error downloading How To PDF:', error);
+        showStatus('Error downloading How To guide', 'error');
     }
 });
