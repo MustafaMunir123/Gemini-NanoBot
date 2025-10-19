@@ -342,8 +342,60 @@
     // Make validateTextSelection globally accessible for other flows
     window.validateTextSelection = validateTextSelection;
 
+    // Make showToast globally accessible for testing
+    window.showToast = showToast;
+
+    // Audio notification function
+    function playNotificationSound(type) {
+      try {
+        console.log('playNotificationSound called with type:', type);
+
+        // Get extension ID for the audio file path
+        const extensionId = getExtensionInfo();
+        console.log('Extension ID:', extensionId);
+
+        if (!extensionId) {
+          console.warn('Could not determine extension ID for audio playback');
+          return;
+        }
+
+        // Choose audio file based on type
+        const audioFileName = type === 'error' ? 'error.mp3' : 'success.mp3';
+
+        // Create audio element
+        const audio = new Audio();
+        const audioPath = `chrome-extension://${extensionId}/${audioFileName}`;
+        audio.src = audioPath;
+        audio.volume = 0.7; // Set volume to 70%
+
+        console.log('Audio path:', audioPath);
+        console.log('Using audio file:', audioFileName);
+
+        // Add event listeners for debugging
+        audio.addEventListener('loadstart', () => console.log('Audio load started'));
+        audio.addEventListener('canplay', () => console.log('Audio can play'));
+        audio.addEventListener('error', (e) => console.error('Audio error:', e));
+
+        // Play the audio
+        audio.play().then(() => {
+          console.log('Audio played successfully');
+        }).catch(error => {
+          console.warn('Could not play notification sound:', error);
+        });
+
+        console.log(`Playing ${audioFileName} for ${type} toast`);
+      } catch (error) {
+        console.warn('Error playing notification sound:', error);
+      }
+    }
+
     // Toastify notification method to replace browser alerts
     function showToast(message, type = 'success') {
+      console.log('showToast called with message:', message, 'type:', type);
+
+      // Play audio notification
+      playNotificationSound(type);
+
       // Create toast container if it doesn't exist
       let toastContainer = document.getElementById('toastify-container');
       if (!toastContainer) {

@@ -39,7 +39,9 @@
                 "icon48.png",
                 "pdf.min.js",
                 "pdf.worker.min.js",
-                "mammoth.browser.min.js"
+                "mammoth.browser.min.js",
+                "error.mp3",
+                "success.mp3"
             ],
             "matches": [
                 "<all_urls>"
