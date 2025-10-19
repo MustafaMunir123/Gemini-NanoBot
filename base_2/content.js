@@ -342,6 +342,91 @@
     // Make validateTextSelection globally accessible for other flows
     window.validateTextSelection = validateTextSelection;
 
+    // Toastify notification method to replace browser alerts
+    function showToast(message, type = 'success') {
+      // Create toast container if it doesn't exist
+      let toastContainer = document.getElementById('toastify-container');
+      if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toastify-container';
+        toastContainer.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          z-index: 999999;
+          pointer-events: none;
+        `;
+        document.body.appendChild(toastContainer);
+      }
+
+      // Create toast element
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        background: ${type === 'success' ? '#4CAF50' : '#f44336'};
+        color: white;
+        padding: 12px 20px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        max-width: 300px;
+        word-wrap: break-word;
+        opacity: 0;
+        transform: translateX(100%);
+        transition: all 0.3s ease;
+        pointer-events: auto;
+        cursor: pointer;
+        position: relative;
+      `;
+
+      // Add close button
+      const closeBtn = document.createElement('span');
+      closeBtn.innerHTML = '×';
+      closeBtn.style.cssText = `
+        position: absolute;
+        top: 5px;
+        right: 8px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        opacity: 0.8;
+      `;
+      closeBtn.addEventListener('click', () => removeToast(toast));
+
+      toast.appendChild(document.createTextNode(message));
+      toast.appendChild(closeBtn);
+      toastContainer.appendChild(toast);
+
+      // Animate in
+      setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(0)';
+      }, 10);
+
+      // Auto remove after 5 seconds
+      const autoRemoveTimeout = setTimeout(() => {
+        removeToast(toast);
+      }, 5000);
+
+      // Click to dismiss
+      toast.addEventListener('click', () => {
+        clearTimeout(autoRemoveTimeout);
+        removeToast(toast);
+      });
+
+      function removeToast(toastElement) {
+        toastElement.style.opacity = '0';
+        toastElement.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+          if (toastElement.parentNode) {
+            toastElement.parentNode.removeChild(toastElement);
+          }
+        }, 300);
+      }
+    }
+
     // Listen for messages from popup
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.action === 'documentParsed') {
@@ -603,12 +688,12 @@
           generateCoverLetter(text, storedContent);
         } else {
           console.log('No job description found in the webpage');
-          alert('No Job Description found on this page. Please navigate to a job posting page.');
+          showToast('No Job Description found on this page. Please navigate to a job posting page.', 'error');
         }
 
       } catch (error) {
         console.error('Error checking for job description:', error);
-        alert('Error analyzing page content. Please try again.');
+        showToast('Error analyzing page content. Please try again.', 'error');
       }
     }
 
@@ -686,7 +771,7 @@ Generate a complete cover letter that the candidate can use for this job applica
 
       } catch (error) {
         console.error('Error generating cover letter:', error);
-        alert('Error generating cover letter. Please try again.');
+        showToast('Error generating cover letter. Please try again.', 'error');
       }
     }
 
@@ -698,7 +783,7 @@ Generate a complete cover letter that the candidate can use for this job applica
 
         if (!targetElement || !isTextEditable(targetElement)) {
           console.error('No valid text input element found to insert cover letter');
-          alert('No text input found. Please focus on a text field first.');
+          showToast('No text input found. Please focus on a text field first.', 'error');
           return;
         }
 
@@ -708,14 +793,14 @@ Generate a complete cover letter that the candidate can use for this job applica
         setTextToElement(targetElement, coverLetter);
 
         // Show success message
-        alert('Cover letter generated and inserted successfully!');
+        showToast('Cover letter generated and inserted successfully!', 'success');
 
         // Focus the element to ensure it's active
         targetElement.focus();
 
       } catch (error) {
         console.error('Error inserting cover letter:', error);
-        alert('Error inserting cover letter. Please try again.');
+        showToast('Error inserting cover letter. Please try again.', 'error');
       }
     }
 
@@ -804,7 +889,7 @@ Generate a complete cover letter that the candidate can use for this job applica
       // First validate text selection
       const validation = validateTextSelection();
       if (!validation.isValid) {
-        alert(validation.error);
+        showToast(validation.error, 'error');
         return;
       }
 
@@ -1102,7 +1187,7 @@ Generate a complete cover letter that the candidate can use for this job applica
       chrome.storage.local.get(['uploadedFileName', 'storedContent'], (result) => {
         if (!result.uploadedFileName || !result.storedContent) {
           // No file attached - show message
-          alert('No file attached. Please upload a document first.');
+          showToast('No file attached. Please upload a document first.', 'error');
           console.log('No file attached for cover letter generation');
           return;
         }
