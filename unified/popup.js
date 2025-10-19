@@ -1,9 +1,8 @@
 // ============================================================================
-// UNIFIED POPUP CONTROLLER FOR AI TEXT ASSISTANT PRO
+// UNIFIED POPUP CONTROLLER FOR Nano Bot
 // ============================================================================
 
 // DOM Elements
-const voiceToggle = document.getElementById("voice-toggle");
 const floatingToggle = document.getElementById("floating-toggle");
 const documentFileInput = document.getElementById("document-file");
 const parseDocumentButton = document.getElementById("parse-document");
@@ -14,49 +13,11 @@ const statusDiv = document.getElementById("status");
 // ============================================================================
 
 // Initialize extension state from storage
-chrome.storage.local.get(["voiceControlEnabled", "floatingIndicatorEnabled"], (result) => {
-    // Default voice control to true (auto-enables on first use)
-    voiceToggle.checked = result.voiceControlEnabled !== false;
+chrome.storage.local.get(["floatingIndicatorEnabled"], (result) => {
     // Default floating indicator to false (user must enable)
     floatingToggle.checked = result.floatingIndicatorEnabled === true;
 });
 
-// ============================================================================
-// VOICE CONTROL FUNCTIONALITY
-// ============================================================================
-
-voiceToggle.addEventListener("change", () => {
-    const enabled = voiceToggle.checked;
-
-    // Save state to chrome.storage.local
-    chrome.storage.local.set({ voiceControlEnabled: enabled });
-
-    // Update voice control in the current tab
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-        if (!tab || !tab.id) return;
-
-        // Send message to content script to toggle voice control
-        chrome.tabs.sendMessage(tab.id, {
-            action: 'toggleVoiceControl',
-            enabled: enabled
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                console.log('Voice control toggle message failed:', chrome.runtime.lastError);
-                // Fallback: inject content script if needed
-                if (enabled) {
-                    chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        files: ["content.js"]
-                    }).catch((err) => {
-                        console.error("Failed to inject script for voice control:", err);
-                    });
-                }
-            } else {
-                console.log('Voice control toggle message sent successfully');
-            }
-        });
-    });
-});
 
 // ============================================================================
 // FLOATING INDICATOR FUNCTIONALITY
@@ -305,7 +266,7 @@ documentFileInput.addEventListener('change', async (e) => {
 
 // Handle popup window events
 window.addEventListener('load', () => {
-    console.log('AI Text Assistant Pro popup loaded');
+    console.log('Nano Bot popup loaded');
 
     // Ensure content script is injected on popup open
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -322,5 +283,5 @@ window.addEventListener('load', () => {
 
 // Handle popup close
 window.addEventListener('beforeunload', () => {
-    console.log('AI Text Assistant Pro popup closing');
+    console.log('Nano Bot popup closing');
 });

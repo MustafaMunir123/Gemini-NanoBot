@@ -1,4 +1,4 @@
-# AI Text Assistant Pro
+# Nano Bot
 
 A unified Chrome extension that combines voice-controlled text rewriting and floating text proofreading with cover letter generation capabilities.
 

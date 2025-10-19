@@ -1,8 +1,8 @@
 // ============================================================================
-// BACKGROUND SERVICE WORKER FOR AI TEXT ASSISTANT PRO
+// BACKGROUND SERVICE WORKER FOR Nano Bot
 // ============================================================================
 
-console.log("AI Text Assistant Pro background service worker loaded");
+console.log("Nano Bot background service worker loaded");
 
 // ============================================================================
 // EXTENSION INSTALLATION AND SETUP
@@ -10,7 +10,7 @@ console.log("AI Text Assistant Pro background service worker loaded");
 
 // Handle extension installation
 chrome.runtime.onInstalled.addListener((details) => {
-    console.log("AI Text Assistant Pro installed/updated:", details.reason);
+    console.log("Nano Bot installed/updated:", details.reason);
 
     // Set default extension state
     chrome.storage.local.set({
@@ -211,12 +211,12 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 
 // Handle runtime errors
 chrome.runtime.onStartup.addListener(() => {
-    console.log("AI Text Assistant Pro background service worker started");
+    console.log("Nano Bot background service worker started");
 });
 
 // Handle service worker suspension
 self.addEventListener('beforeunload', () => {
-    console.log("AI Text Assistant Pro background service worker suspending");
+    console.log("Nano Bot background service worker suspending");
 });
 
 // ============================================================================
@@ -261,4 +261,4 @@ async function injectIntoAllTabs() {
 // ============================================================================
 
 // Initialize the background service worker
-console.log("AI Text Assistant Pro background service worker initialized successfully");
+console.log("Nano Bot background service worker initialized successfully");

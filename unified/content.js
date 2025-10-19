@@ -9,7 +9,7 @@
         return;
     }
 
-    console.log("AI Text Assistant Pro loaded");
+    console.log("Nano Bot loaded");
 
     // ============================================================================
     // SHARED UTILITIES AND CONFIGURATION
@@ -1707,5 +1707,5 @@ Generate a complete cover letter that the candidate can use for this job applica
     window.validateTextSelection = () => FloatingIndicatorFlow.validateTextSelection();
     window.showToast = (message, type) => NotificationSystem.showToast(message, type);
 
-    console.log("AI Text Assistant Pro - Both flows initialized and ready");
+    console.log("Nano Bot - Both flows initialized and ready");
 })();

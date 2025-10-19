@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "AI Text Assistant Pro",
+    "name": "Nano Bot",
     "version": "2.0",
     "description": "Combined voice-controlled text rewriting and floating text proofreading with cover letter generation",
     "permissions": [
@@ -14,7 +14,7 @@
     "action": {
         "default_popup": "popup.html",
         "default_icon": {
-            "48": "icon48.png",
+            "48": "bot.png",
             "128": "icon128.png"
         }
     },
@@ -42,7 +42,7 @@
         }
     ],
     "icons": {
-        "48": "icon48.png",
+        "48": "bot.png",
         "128": "icon128.png"
     },
     "web_accessible_resources": [
@@ -50,6 +50,7 @@
             "resources": [
                 "icon48.png",
                 "icon128.png",
+                "bot.png",
                 "pdf.min.js",
                 "pdf.worker.min.js",
                 "mammoth.browser.min.js",
