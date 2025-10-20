@@ -1756,8 +1756,10 @@
         },
 
         async checkForJobDescription(text, storedContent) {
+            // console.log("checkForJobDescription function called");
             try {
                 NotificationSystem.showToast("Analyzing page...", "info", 4000);
+                // console.log(`TEXT: ${text}  STOREDCONTENT: ${storedContent}`);
 
                 const prompt = `Analyze the following text and determine if it contains a detailed job description. A job description typically includes:
         - Job title/position
@@ -1959,9 +1961,11 @@ Generate a complete cover letter that the candidate can use for this job applica
         },
 
         async detectAndStoreJD(pageText) {
+            // console.log("detectAndStoreJD function called");
+            // console.log(`PAGE TEXT: ${pageText.substring(0, 200)}...`);
             try {
                 NotificationSystem.showToast('Analyzing page...', 'info', 3000);
-                const prompt = `Analyze the following text and determine if it contains a detailed job description. Answer only "YES" or "NO".\n\n${pageText.substring(0, 2000)}`;
+                const prompt = `Analyze the following text and determine if it contains a job description. Answer only "YES" or "NO".\n\n${pageText.substring(0, 4000)}`;
                 const response = await this.callLanguageModel(prompt, 'job description analysis');
                 const hasJD = (response || '').trim().toUpperCase() === 'YES';
                 if (!hasJD) {
@@ -2002,7 +2006,7 @@ Generate a complete cover letter that the candidate can use for this job applica
                 const hasTarget = targetEl && DOMUtils.isTextEditable(targetEl);
 
                 // Show processing toast before generation starts
-                NotificationSystem.showToast('Processing cover letter...', 'info', 4000);
+                NotificationSystem.showToast('Processing cover letter...', 'info', 11000);
 
                 const coverLetterPrompt = `# Job Description from Webpage\n\n${jdText}\n\n# Resume Content\n\n${resume.storedContent}\n\n# Instructions\n\nPlease generate a professional cover letter that:\n1. Addresses the specific requirements mentioned in the job description\n2. Highlights relevant experience and skills from the resume that match the job requirements\n3. Demonstrates understanding of the role and company\n4. Is well-structured with proper greeting, body paragraphs, and closing\n5. Is professional, engaging, and tailored to this specific position\n6. Is approximately 3-4 paragraphs in length\n7. Must include info from resume like name, address, phone number, email, etc. instead of using place holders like [Name], [Address], [Phone Number], [Email] NO BRACKETS.\n\nGenerate a complete cover letter that the candidate can use for this job application.`;
                 const coverLetter = await this.callLanguageModel(coverLetterPrompt, 'cover letter generation');
