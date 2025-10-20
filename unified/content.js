@@ -1,316 +1,315 @@
 (() => {
-  // Only inject if not already injected
-  if (window.__aiTextAssistantInjected) return;
-  window.__aiTextAssistantInjected = true;
+    // Only inject if not already injected
+    if (window.__aiTextAssistantInjected) return;
+    window.__aiTextAssistantInjected = true;
 
-  // Check if Chrome extension context is valid
-  if (!chrome || !chrome.runtime || !chrome.runtime.id) {
-    console.warn("Chrome extension context is invalid or not available");
-    return;
-  }
-
-  console.log("Nano Bot loaded");
-
-  // ============================================================================
-  // SHARED UTILITIES AND CONFIGURATION
-  // ============================================================================
-
-  // Extension state management
-  const extensionState = {
-    voiceControlEnabled: false,
-    floatingIndicatorEnabled: false,
-    isVoiceListening: false,
-    isProofreading: false,
-  };
-
-  // Shared DOM utilities
-  const DOMUtils = {
-    isTextEditable(el) {
-      if (!el) return false;
-      return (
-        el.tagName === "INPUT" ||
-        el.tagName === "TEXTAREA" ||
-        el.isContentEditable ||
-        el.classList.contains("editable") ||
-        el.getAttribute("role") === "textbox" ||
-        el.getAttribute("aria-label")?.includes("Message Body")
-      );
-    },
-
-    getTextFromElement(el) {
-      if (!el) return "";
-      if (el.isContentEditable || el.classList.contains("editable")) {
-        return el.textContent.trim() || el.innerText.trim();
-      } else {
-        return el.value.trim();
-      }
-    },
-
-    setTextToElement(el, text) {
-      if (!el) {
-        console.error("setTextToElement: No element provided");
+    // Check if Chrome extension context is valid
+    if (!chrome || !chrome.runtime || !chrome.runtime.id) {
+        console.warn("Chrome extension context is invalid or not available");
         return;
-      }
+    }
 
-      if (
-        el.isContentEditable ||
-        el.classList.contains("editable") ||
-        el.getAttribute("role") === "textbox"
-      ) {
-        if (el.tagName === "DIV") {
-          const htmlText = text.replace(/\n/g, "<br>");
-          el.innerHTML = htmlText;
-        } else {
-          el.textContent = text;
-        }
+    console.log("Nano Bot loaded");
 
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        el.dispatchEvent(new Event("keyup", { bubbles: true }));
-        el.focus();
-      } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
-        el.value = text;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    },
+    // ============================================================================
+    // SHARED UTILITIES AND CONFIGURATION
+    // ============================================================================
 
-    replaceSelectedTextInElement(el, originalText, correctedText) {
-      if (!el) {
-        console.error("replaceSelectedTextInElement: No element provided");
-        return;
-      }
+    // Extension state management
+    const extensionState = {
+        voiceControlEnabled: false,
+        floatingIndicatorEnabled: false,
+        isVoiceListening: false,
+        isProofreading: false,
+    };
 
-      console.log("replaceSelectedTextInElement called:", {
-        originalText: originalText,
-        correctedText: correctedText,
-        elementTag: el.tagName,
-      });
+    // Shared DOM utilities
+    const DOMUtils = {
+        isTextEditable(el) {
+            if (!el) return false;
+            return (
+                el.tagName === "INPUT" ||
+                el.tagName === "TEXTAREA" ||
+                el.isContentEditable ||
+                el.classList.contains("editable") ||
+                el.getAttribute("role") === "textbox" ||
+                el.getAttribute("aria-label")?.includes("Message Body")
+            );
+        },
 
-      if (
-        el.isContentEditable ||
-        el.classList.contains("editable") ||
-        el.getAttribute("role") === "textbox"
-      ) {
-        // For contentEditable elements, use the browser's selection API to replace only selected text
-        const selection = window.getSelection();
-
-        if (selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-
-          // Check if the selection is within our target element
-          if (
-            el.contains(range.commonAncestorContainer) ||
-            el === range.commonAncestorContainer
-          ) {
-            // Replace the selected content
-            range.deleteContents();
-
-            // Create a text node with the corrected text
-            const textNode = document.createTextNode(correctedText);
-            range.insertNode(textNode);
-
-            // Clear the selection
-            selection.removeAllRanges();
-
-            console.log("Replaced selected text using selection API");
-          } else {
-            // Fallback to string replacement if selection is not in our element
-            console.log("Selection not in target element, using fallback");
-            this.fallbackTextReplacement(el, originalText, correctedText);
-          }
-        } else {
-          // No selection, use fallback
-          console.log("No selection found, using fallback");
-          this.fallbackTextReplacement(el, originalText, correctedText);
-        }
-
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        el.dispatchEvent(new Event("keyup", { bubbles: true }));
-        el.focus();
-      } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
-        const currentValue = el.value || "";
-        const newValue = currentValue.replace(originalText, correctedText);
-        el.value = newValue;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    },
-
-    fallbackTextReplacement(el, originalText, correctedText) {
-      const currentText = el.textContent || el.innerText || "";
-      const newText = currentText.replace(originalText, correctedText);
-
-      console.log("Fallback text replacement:", {
-        currentText: currentText,
-        newText: newText,
-        replacementMade: currentText !== newText,
-      });
-
-      if (el.tagName === "DIV") {
-        // For DIV elements, preserve HTML formatting by converting newlines to <br>
-        const htmlText = newText.replace(/\n/g, "<br>");
-        el.innerHTML = htmlText;
-      } else {
-        el.textContent = newText;
-      }
-    },
-  };
-
-  // ============================================================================
-  // CHROME API SAFETY UTILITIES
-  // ============================================================================
-
-  const ChromeAPI = {
-    // Safely call chrome.storage.local.set
-    async setStorage(key, value) {
-      return new Promise((resolve, reject) => {
-        try {
-          chrome.storage.local.set({ [key]: value }, () => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                "Chrome storage set error:",
-                chrome.runtime.lastError
-              );
-              resolve(false);
+        getTextFromElement(el) {
+            if (!el) return "";
+            if (el.isContentEditable || el.classList.contains("editable")) {
+                return el.textContent.trim() || el.innerText.trim();
             } else {
-              resolve(true);
+                return el.value.trim();
             }
-          });
-        } catch (error) {
-          console.warn("Chrome API call failed:", error);
-          resolve(false);
-        }
-      });
-    },
+        },
 
-    // Safely call chrome.storage.local.get
-    async getStorage(keys) {
-      return new Promise((resolve) => {
-        try {
-          chrome.storage.local.get(keys, (result) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                "Chrome storage get error:",
-                chrome.runtime.lastError
-              );
-              resolve(null);
+        setTextToElement(el, text) {
+            if (!el) {
+                console.error("setTextToElement: No element provided");
+                return;
+            }
+
+            if (
+                el.isContentEditable ||
+                el.classList.contains("editable") ||
+                el.getAttribute("role") === "textbox"
+            ) {
+                if (el.tagName === "DIV") {
+                    const htmlText = text.replace(/\n/g, "<br>");
+                    el.innerHTML = htmlText;
+                } else {
+                    el.textContent = text;
+                }
+
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+                el.dispatchEvent(new Event("keyup", { bubbles: true }));
+                el.focus();
+            } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+                el.value = text;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        },
+
+        replaceSelectedTextInElement(el, originalText, correctedText) {
+            if (!el) {
+                console.error("replaceSelectedTextInElement: No element provided");
+                return;
+            }
+
+            console.log("replaceSelectedTextInElement called:", {
+                originalText: originalText,
+                correctedText: correctedText,
+                elementTag: el.tagName,
+            });
+
+            if (
+                el.isContentEditable ||
+                el.classList.contains("editable") ||
+                el.getAttribute("role") === "textbox"
+            ) {
+                // For contentEditable elements, use the browser's selection API to replace only selected text
+                const selection = window.getSelection();
+
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+
+                    // Check if the selection is within our target element
+                    if (
+                        el.contains(range.commonAncestorContainer) ||
+                        el === range.commonAncestorContainer
+                    ) {
+                        // Replace the selected content
+                        range.deleteContents();
+
+                        // Create a text node with the corrected text
+                        const textNode = document.createTextNode(correctedText);
+                        range.insertNode(textNode);
+
+                        // Clear the selection
+                        selection.removeAllRanges();
+
+                        console.log("Replaced selected text using selection API");
+                    } else {
+                        // Fallback to string replacement if selection is not in our element
+                        console.log("Selection not in target element, using fallback");
+                        this.fallbackTextReplacement(el, originalText, correctedText);
+                    }
+                } else {
+                    // No selection, use fallback
+                    console.log("No selection found, using fallback");
+                    this.fallbackTextReplacement(el, originalText, correctedText);
+                }
+
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+                el.dispatchEvent(new Event("keyup", { bubbles: true }));
+                el.focus();
+            } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+                const currentValue = el.value || "";
+                const newValue = currentValue.replace(originalText, correctedText);
+                el.value = newValue;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        },
+
+        fallbackTextReplacement(el, originalText, correctedText) {
+            const currentText = el.textContent || el.innerText || "";
+            const newText = currentText.replace(originalText, correctedText);
+
+            console.log("Fallback text replacement:", {
+                currentText: currentText,
+                newText: newText,
+                replacementMade: currentText !== newText,
+            });
+
+            if (el.tagName === "DIV") {
+                // For DIV elements, preserve HTML formatting by converting newlines to <br>
+                const htmlText = newText.replace(/\n/g, "<br>");
+                el.innerHTML = htmlText;
             } else {
-              resolve(result);
+                el.textContent = newText;
             }
-          });
-        } catch (error) {
-          console.warn("Chrome API call failed:", error);
-          resolve(null);
-        }
-      });
-    },
+        },
+    };
 
-    // Safely call chrome.storage.local.remove
-    async removeStorage(keys) {
-      return new Promise((resolve) => {
-        try {
-          chrome.storage.local.remove(keys, () => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                "Chrome storage remove error:",
-                chrome.runtime.lastError
-              );
-              resolve(false);
-            } else {
-              resolve(true);
-            }
-          });
-        } catch (error) {
-          console.warn("Chrome API call failed:", error);
-          resolve(false);
-        }
-      });
-    },
+    // ============================================================================
+    // CHROME API SAFETY UTILITIES
+    // ============================================================================
 
-    // Safely send message to tabs
-    async sendMessage(tabId, message) {
-      return new Promise((resolve) => {
-        try {
-          chrome.tabs.sendMessage(tabId, message, (response) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                "Chrome tabs sendMessage error:",
-                chrome.runtime.lastError
-              );
-              resolve(false);
-            } else {
-              resolve(true);
-            }
-          });
-        } catch (error) {
-          console.warn("Chrome API call failed:", error);
-          resolve(false);
-        }
-      });
-    },
-  };
+    const ChromeAPI = {
+        // Safely call chrome.storage.local.set
+        async setStorage(key, value) {
+            return new Promise((resolve, reject) => {
+                try {
+                    chrome.storage.local.set({ [key]: value }, () => {
+                        if (chrome.runtime.lastError) {
+                            console.warn(
+                                "Chrome storage set error:",
+                                chrome.runtime.lastError
+                            );
+                            resolve(false);
+                        } else {
+                            resolve(true);
+                        }
+                    });
+                } catch (error) {
+                    console.warn("Chrome API call failed:", error);
+                    resolve(false);
+                }
+            });
+        },
 
-  // Shared notification system
-  const NotificationSystem = {
-    activeToasts: new Map(),
+        // Safely call chrome.storage.local.get
+        async getStorage(keys) {
+            return new Promise((resolve) => {
+                try {
+                    chrome.storage.local.get(keys, (result) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn(
+                                "Chrome storage get error:",
+                                chrome.runtime.lastError
+                            );
+                            resolve(null);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                } catch (error) {
+                    console.warn("Chrome API call failed:", error);
+                    resolve(null);
+                }
+            });
+        },
 
-    createToastContainer() {
-      let toastContainer = document.getElementById(
-        "ai-text-assistant-toast-container"
-      );
-      if (!toastContainer) {
-        toastContainer = document.createElement("div");
-        toastContainer.id = "ai-text-assistant-toast-container";
-        toastContainer.style.cssText = `
+        // Safely call chrome.storage.local.remove
+        async removeStorage(keys) {
+            return new Promise((resolve) => {
+                try {
+                    chrome.storage.local.remove(keys, () => {
+                        if (chrome.runtime.lastError) {
+                            console.warn(
+                                "Chrome storage remove error:",
+                                chrome.runtime.lastError
+                            );
+                            resolve(false);
+                        } else {
+                            resolve(true);
+                        }
+                    });
+                } catch (error) {
+                    console.warn("Chrome API call failed:", error);
+                    resolve(false);
+                }
+            });
+        },
+
+        // Safely send message to tabs
+        async sendMessage(tabId, message) {
+            return new Promise((resolve) => {
+                try {
+                    chrome.tabs.sendMessage(tabId, message, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn(
+                                "Chrome tabs sendMessage error:",
+                                chrome.runtime.lastError
+                            );
+                            resolve(false);
+                        } else {
+                            resolve(true);
+                        }
+                    });
+                } catch (error) {
+                    console.warn("Chrome API call failed:", error);
+                    resolve(false);
+                }
+            });
+        },
+    };
+
+    // Shared notification system
+    const NotificationSystem = {
+        activeToasts: new Map(),
+
+        createToastContainer() {
+            let toastContainer = document.getElementById(
+                "ai-text-assistant-toast-container"
+            );
+            if (!toastContainer) {
+                toastContainer = document.createElement("div");
+                toastContainer.id = "ai-text-assistant-toast-container";
+                toastContainer.style.cssText = `
           position: fixed;
           top: 20px;
           right: 20px;
           z-index: 999999;
           pointer-events: none;
         `;
-        document.body.appendChild(toastContainer);
-      }
-      return toastContainer;
-    },
+                document.body.appendChild(toastContainer);
+            }
+            return toastContainer;
+        },
 
-    showToast(message, type = "success", duration = 3000) {
-      // Only play sound for success and error
-      if (type === "success" || type === "error") {
-        this.playNotificationSound(type);
-      }
+        showToast(message, type = "success", duration = 3000) {
+            // Only play sound for success and error
+            if (type === "success" || type === "error") {
+                this.playNotificationSound(type);
+            }
 
-      const toastContainer = this.createToastContainer();
+            const toastContainer = this.createToastContainer();
 
-      // Remove existing toast with same message if it exists
-      if (this.activeToasts.has(message)) {
-        const existingToast = this.activeToasts.get(message);
-        this.removeToast(existingToast);
-      }
+            // Remove existing toast with same message if it exists
+            if (this.activeToasts.has(message)) {
+                const existingToast = this.activeToasts.get(message);
+                this.removeToast(existingToast);
+            }
 
-      // Set default duration based on type if not specified or if 0
-      if (duration === 0) {
-        if (type === "info") {
-          duration = 4000; // Info toasts stay a bit longer
-        } else if (type === "success") {
-          duration = 3000; // Success toasts
-        } else if (type === "error") {
-          duration = 5000; // Error toasts stay longer for user to read
-        } else {
-          duration = 3000; // Default fallback
-        }
-      }
+            // Set default duration based on type if not specified or if 0
+            if (duration === 0) {
+                if (type === "info") {
+                    duration = 4000; // Info toasts stay a bit longer
+                } else if (type === "success") {
+                    duration = 3000; // Success toasts
+                } else if (type === "error") {
+                    duration = 5000; // Error toasts stay longer for user to read
+                } else {
+                    duration = 3000; // Default fallback
+                }
+            }
 
-      const toast = document.createElement("div");
-      toast.style.cssText = `
-        background: ${
-          type === "success"
-            ? "#4CAF50"
-            : type === "error"
-            ? "#f44336"
-            : "#007bff"
-        };
+            const toast = document.createElement("div");
+            toast.style.cssText = `
+        background: ${type === "success"
+                    ? "#4CAF50"
+                    : type === "error"
+                        ? "#f44336"
+                        : "#007bff"
+                };
         color: white;
         padding: 12px 20px;
         border-radius: 4px;
@@ -329,9 +328,9 @@
         position: relative;
       `;
 
-      const closeBtn = document.createElement("span");
-      closeBtn.innerHTML = "×";
-      closeBtn.style.cssText = `
+            const closeBtn = document.createElement("span");
+            closeBtn.innerHTML = "×";
+            closeBtn.style.cssText = `
         position: absolute;
         top: 5px;
         right: 8px;
@@ -340,465 +339,341 @@
         cursor: pointer;
         opacity: 0.8;
       `;
-      closeBtn.addEventListener("click", () => this.removeToast(toast));
+            closeBtn.addEventListener("click", () => this.removeToast(toast));
 
-      toast.appendChild(document.createTextNode(message));
-      toast.appendChild(closeBtn);
-      toastContainer.appendChild(toast);
+            toast.appendChild(document.createTextNode(message));
+            toast.appendChild(closeBtn);
+            toastContainer.appendChild(toast);
 
-      this.activeToasts.set(message, toast);
+            this.activeToasts.set(message, toast);
 
-      setTimeout(() => {
-        toast.style.opacity = "1";
-        toast.style.transform = "translateX(0)";
-      }, 10);
+            setTimeout(() => {
+                toast.style.opacity = "1";
+                toast.style.transform = "translateX(0)";
+            }, 10);
 
-      // Always set up auto-removal timeout
-      const autoRemoveTimeout = setTimeout(() => {
-        this.removeToast(toast);
-        this.activeToasts.delete(message);
-      }, duration);
+            // Always set up auto-removal timeout
+            const autoRemoveTimeout = setTimeout(() => {
+                this.removeToast(toast);
+                this.activeToasts.delete(message);
+            }, duration);
 
-      toast.addEventListener("click", () => {
-        if (autoRemoveTimeout) {
-          clearTimeout(autoRemoveTimeout);
-        }
-        this.removeToast(toast);
-        this.activeToasts.delete(message);
-      });
-    },
-
-    removeToast(toastElement) {
-      toastElement.style.opacity = "0";
-      toastElement.style.transform = "translateX(100%)";
-      setTimeout(() => {
-        if (toastElement.parentNode) {
-          toastElement.parentNode.removeChild(toastElement);
-        }
-      }, 300);
-    },
-
-    playNotificationSound(type) {
-      try {
-        const extensionId = this.getExtensionInfo();
-        if (!extensionId) return;
-
-        const audioFileName = type === "error" ? "error.mp3" : "success.mp3";
-        const audio = new Audio();
-        audio.src = `chrome-extension://${extensionId}/${audioFileName}`;
-        audio.volume = 0.7;
-        audio.play().catch((error) => {
-          console.warn("Could not play notification sound:", error);
-        });
-      } catch (error) {
-        console.warn("Error playing notification sound:", error);
-      }
-    },
-
-    getExtensionInfo() {
-      if (
-        typeof chrome !== "undefined" &&
-        chrome.runtime &&
-        chrome.runtime.id
-      ) {
-        return chrome.runtime.id;
-      }
-      return null;
-    },
-  };
-
-  // ============================================================================
-  // VOICE CONTROL FLOW (Extension 1 functionality)
-  // ============================================================================
-
-  const VoiceControlFlow = {
-    recognition: null,
-    recognizedText: "",
-    lastFocusedInput: null,
-    lastSelection: null,
-
-    init() {
-      this.setupSpeechRecognition();
-      this.setupMessageListener(); // Changed from setupKeyboardShortcut
-      this.setupFocusTracking();
-    },
-
-    setupSpeechRecognition() {
-      const SpeechRecognition =
-        window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        console.warn("Speech recognition not supported in this browser");
-        return;
-      }
-
-      this.recognition = new SpeechRecognition();
-      this.recognition.continuous = true;
-      this.recognition.interimResults = false;
-      this.recognition.lang = "en-US";
-
-      this.recognition.onstart = () => {
-        console.log("Voice recognition started");
-        NotificationSystem.showToast("🎤 Speak now", "info", 4000);
-      };
-
-      this.recognition.onresult = (event) => {
-        const transcript = Array.from(event.results)
-          .map((result) => result[0].transcript)
-          .join("");
-        this.recognizedText = transcript;
-        console.log("Recognized:", transcript);
-      };
-
-      this.recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        NotificationSystem.showToast(`Voice recognition failed`, "error");
-        extensionState.isVoiceListening = false;
-      };
-
-      this.recognition.onend = () => {
-        console.log("Voice recognition ended");
-        if (extensionState.isVoiceListening) {
-          try {
-            this.recognition.start();
-          } catch (e) {
-            console.error("Failed to restart recognition:", e);
-            extensionState.isVoiceListening = false;
-          }
-        }
-      };
-    },
-
-    // NEW: Listen for messages from background script
-    setupMessageListener() {
-      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === "toggleVoiceRecording") {
-          this.handleVoiceToggle();
-          sendResponse({ success: true });
-        }
-        return true; // Keep channel open for async response
-      });
-    },
-
-    // NEW: Extracted toggle logic into separate method
-    async handleVoiceToggle() {
-      console.log("Voice toggle triggered");
-
-      if (!extensionState.voiceControlEnabled) {
-        NotificationSystem.showToast("Voice control is disabled", "error");
-        return;
-      }
-
-      if (!this.recognition) {
-        NotificationSystem.showToast(
-          "Speech recognition not supported",
-          "error"
-        );
-        return;
-      }
-
-      ChromeAPI.setStorage("voiceControlEnabled", true);
-
-      if (!extensionState.isVoiceListening) {
-        extensionState.isVoiceListening = true;
-        this.recognizedText = "";
-        try {
-          this.recognition.start();
-        } catch (error) {
-          console.error("Failed to start recognition:", error);
-          NotificationSystem.showToast("Failed to start mic", "error");
-          extensionState.isVoiceListening = false;
-        }
-      } else {
-        extensionState.isVoiceListening = false;
-        this.recognition.stop();
-        setTimeout(() => {
-          this.processVoiceCommand();
-        }, 500);
-      }
-    },
-
-    setupFocusTracking() {
-      document.addEventListener(
-        "focusin",
-        (e) => {
-          if (DOMUtils.isTextEditable(e.target)) {
-            this.lastFocusedInput = e.target;
-          }
+            toast.addEventListener("click", () => {
+                if (autoRemoveTimeout) {
+                    clearTimeout(autoRemoveTimeout);
+                }
+                this.removeToast(toast);
+                this.activeToasts.delete(message);
+            });
         },
-        true
-      );
 
-      document.addEventListener("selectionchange", () => {
-        const selection = window.getSelection();
-        const selectedText = selection.toString().trim();
+        removeToast(toastElement) {
+            toastElement.style.opacity = "0";
+            toastElement.style.transform = "translateX(100%)";
+            setTimeout(() => {
+                if (toastElement.parentNode) {
+                    toastElement.parentNode.removeChild(toastElement);
+                }
+            }, 300);
+        },
 
-        if (
-          selectedText &&
-          this.lastFocusedInput &&
-          DOMUtils.isTextEditable(this.lastFocusedInput)
-        ) {
-          const elementText = DOMUtils.getTextFromElement(
-            this.lastFocusedInput
-          );
-          if (elementText.includes(selectedText)) {
-            this.lastSelection = {
-              text: selectedText,
-              element: this.lastFocusedInput,
+        playNotificationSound(type) {
+            try {
+                const extensionId = this.getExtensionInfo();
+                if (!extensionId) return;
+
+                const audioFileName = type === "error" ? "error.mp3" : "success.mp3";
+                const audio = new Audio();
+                audio.src = `chrome-extension://${extensionId}/${audioFileName}`;
+                audio.volume = 0.7;
+                audio.play().catch((error) => {
+                    console.warn("Could not play notification sound:", error);
+                });
+            } catch (error) {
+                console.warn("Error playing notification sound:", error);
+            }
+        },
+
+        getExtensionInfo() {
+            if (
+                typeof chrome !== "undefined" &&
+                chrome.runtime &&
+                chrome.runtime.id
+            ) {
+                return chrome.runtime.id;
+            }
+            return null;
+        },
+    };
+
+    // ============================================================================
+    // VOICE CONTROL FLOW (Extension 1 functionality)
+    // ============================================================================
+
+    const VoiceControlFlow = {
+        operatingSystem: window.navigator.platform,
+        recognition: null,
+        recognizedText: "",
+        lastFocusedInput: null,
+        lastSelection: null,
+
+        init() {
+            this.setupSpeechRecognition();
+            // Use keyboard listener on macOS, background command messaging elsewhere
+            if (typeof this.operatingSystem === "string" && this.operatingSystem.includes("Mac")) {
+                this.setupKeyboardShortcut();
+            } else {
+                this.setupMessageListener();
+            }
+            this.setupFocusTracking();
+        },
+
+        setupSpeechRecognition() {
+            const SpeechRecognition =
+                window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                console.warn("Speech recognition not supported in this browser");
+                return;
+            }
+
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = true;
+            this.recognition.interimResults = false;
+            this.recognition.lang = "en-US";
+
+            this.recognition.onstart = () => {
+                console.log("Voice recognition started");
+                NotificationSystem.showToast("🎤 Speak now", "info", 4000);
             };
-          }
-        } else {
-          this.lastSelection = null;
-        }
-      });
-    },
 
-    validateTextSelection() {
-      const selection = window.getSelection();
-      let selectedText = selection.toString().trim();
-      let focusedElement = this.lastFocusedInput;
+            this.recognition.onresult = (event) => {
+                const transcript = Array.from(event.results)
+                    .map((result) => result[0].transcript)
+                    .join("");
+                this.recognizedText = transcript;
+                console.log("Recognized:", transcript);
+            };
 
-      if (!selectedText && this.lastSelection && this.lastSelection.text) {
-        selectedText = this.lastSelection.text;
-        focusedElement = this.lastSelection.element;
-      }
+            this.recognition.onerror = (event) => {
+                console.error("Speech recognition error:", event.error);
+                NotificationSystem.showToast(`Voice recognition failed`, "error");
+                extensionState.isVoiceListening = false;
+            };
 
-      if (!focusedElement) {
-        return {
-          isValid: false,
-          error: "No text input field is focused",
-          selectedText: null,
-          focusedElement: null,
-        };
-      }
-
-      if (!selectedText) {
-        const elementText = DOMUtils.getTextFromElement(focusedElement);
-
-        if (!elementText || elementText.trim().length === 0) {
-          return {
-            isValid: false,
-            error: "No text found in the input field",
-            selectedText: null,
-            focusedElement: null,
-          };
-        }
-
-        selectedText = elementText;
-      } else {
-        const elementText = DOMUtils.getTextFromElement(focusedElement);
-        if (!elementText.includes(selectedText)) {
-          return {
-            isValid: false,
-            error: "Selected text must be from the focused field",
-            selectedText: null,
-            focusedElement: null,
-          };
-        }
-      }
-
-      return {
-        isValid: true,
-        selectedText: selectedText,
-        focusedElement: focusedElement,
-      };
-    },
-
-    async determineOperationType(instructions) {
-      if (typeof LanguageModel === "undefined") {
-        return true;
-      }
-
-      try {
-        const modelAvailability = await LanguageModel.availability();
-        if (modelAvailability === "unavailable") {
-          return true;
-        }
-
-        const session = await LanguageModel.create({
-          outputLanguage: "en",
-          monitor(m) {
-            m.addEventListener("downloadprogress", (e) => {
-              console.log(`Downloaded ${e.loaded * 100}%`);
-            });
-          },
-        });
-
-        const instructionTypePrompt = `
-        You are an instruction analyzer. Based on the following user instruction, determine whether it is asking for WRITING new content or REWRITING existing content.
-        
-        WRITING instructions ask to CREATE NEW CONTENT from scratch, such as:
-        - "Write an email to..."
-        - "Create a story about..."
-        - "Compose a letter..."
-        - "Generate content about..."
-        - "Write a summary of..."
-        
-        REWRITING instructions ask to IMPROVE OR MODIFY EXISTING TEXT, such as:
-        - "Make this more formal"
-        - "Improve this text"
-        - "Change the tone to..."
-        - "Rewrite this paragraph"
-        
-        Key distinction: If the instruction asks to CREATE something new, it's WRITING. If it asks to IMPROVE existing text, it's REWRITING.
-        
-        Respond with exactly one word: either "WRITING" or "REWRITING"
-        
-        Instruction: "${instructions}"
-        `;
-
-        const instructionTypeResponse = await session.prompt(
-          instructionTypePrompt,
-          { outputLanguage: "en" }
-        );
-        const instructionType = instructionTypeResponse.trim().toUpperCase();
-        session.destroy();
-
-        return instructionType === "WRITING";
-      } catch (error) {
-        console.warn("Error determining operation type:", error);
-        return true;
-      }
-    },
-
-    async processVoiceCommand() {
-      if (!this.recognizedText) {
-        NotificationSystem.showToast("No speech detected", "error");
-        return;
-      }
-
-      const isWriteOperation = await this.determineOperationType(
-        this.recognizedText
-      );
-
-      let selectedText = "";
-      let focusedElement = this.lastFocusedInput;
-
-      if (isWriteOperation) {
-        if (!focusedElement || !DOMUtils.isTextEditable(focusedElement)) {
-          NotificationSystem.showToast(
-            "No text input field is focused",
-            "error"
-          );
-          return;
-        }
-        selectedText = this.lastSelection ? this.lastSelection.text : "";
-      } else {
-        const validation = this.validateTextSelection();
-        if (!validation.isValid) {
-          NotificationSystem.showToast(validation.error, "error");
-          return;
-        }
-        selectedText = validation.selectedText;
-        focusedElement = validation.focusedElement;
-      }
-
-      const documentData = await this.getStoredDocumentContent();
-      const willUseDocumentContext = documentData && documentData.content;
-
-      if (willUseDocumentContext) {
-        NotificationSystem.showToast(
-          `Processing with document context (${documentData.fileName})...`,
-          "info",
-          4000
-        );
-      } else {
-        NotificationSystem.showToast("Processing...", "info", 4000);
-      }
-
-      try {
-        const response = await this.rewriteText(
-          selectedText,
-          this.recognizedText
-        );
-
-        const { result, type } = response;
-        NotificationSystem.showToast(
-          `${type === "WRITING" ? "Written" : "Rewritten"} successfully`,
-          "success"
-        );
-
-        const currentSelection = window.getSelection();
-        const currentSelectedText = currentSelection.toString().trim();
-        const elementText = DOMUtils.getTextFromElement(focusedElement);
-
-        const shouldReplaceSelectedOnly =
-          currentSelectedText &&
-          elementText.includes(currentSelectedText) &&
-          currentSelectedText === selectedText;
-
-        console.log("Selection detection:", {
-          currentSelectedText: currentSelectedText,
-          selectedText: selectedText,
-          elementText: elementText,
-          shouldReplaceSelectedOnly: shouldReplaceSelectedOnly,
-          result: result,
-        });
-
-        if (shouldReplaceSelectedOnly) {
-          console.log("Replacing selected text only");
-          DOMUtils.replaceSelectedTextInElement(
-            focusedElement,
-            selectedText,
-            result
-          );
-        } else {
-          console.log("Replacing full content");
-          DOMUtils.setTextToElement(focusedElement, result);
-        }
-
-        this.recognizedText = "";
-      } catch (err) {
-        console.error(err);
-        NotificationSystem.showToast(`Error: ${err.message}`, "error");
-      } finally {
-        this.lastSelection = null;
-      }
-    },
-
-    async getStoredDocumentContent() {
-      const result = await ChromeAPI.getStorage([
-        "uploadedFileName",
-        "storedContent",
-      ]);
-      if (result && result.uploadedFileName && result.storedContent) {
-        return {
-          fileName: result.uploadedFileName,
-          content: result.storedContent,
-        };
-      }
-      return null;
-    },
-
-    async rewriteText(inputText, instructions) {
-      if (!("Rewriter" in self) && !("Writer" in window)) {
-        throw new Error(
-          "Neither Rewriter nor Writer API is available in this browser."
-        );
-      }
-
-      if (typeof LanguageModel === "undefined") {
-        throw new Error(
-          "Prompt (language model) API not available in this browser."
-        );
-      }
-
-      const modelAvailability = await LanguageModel.availability();
-      if (modelAvailability === "unavailable") {
-        throw new Error(
-          "Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags."
-        );
-      }
-
-      const session = await LanguageModel.create({
-        outputLanguage: "en",
-        monitor(m) {
-          m.addEventListener("downloadprogress", (e) => {
-            console.log(`Downloaded ${e.loaded * 100}%`);
-          });
+            this.recognition.onend = () => {
+                console.log("Voice recognition ended");
+                if (extensionState.isVoiceListening) {
+                    try {
+                        this.recognition.start();
+                    } catch (e) {
+                        console.error("Failed to restart recognition:", e);
+                        extensionState.isVoiceListening = false;
+                    }
+                }
+            };
         },
-      });
 
-      const instructionTypePrompt = `
+        // NEW: Listen for messages from background script
+        setupMessageListener() {
+            chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+                if (message.action === "toggleVoiceRecording") {
+                    this.handleVoiceToggle();
+                    sendResponse({ success: true });
+                }
+                return true; // Keep channel open for async response
+            });
+        },
+
+        // Keyboard shortcut handler (mirrors implementation from test.js)
+        setupKeyboardShortcut() {
+            document.addEventListener(
+                "keydown",
+                async (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "q") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        if (!extensionState.voiceControlEnabled) {
+                            NotificationSystem.showToast("Voice control is disabled", "error");
+                            return;
+                        }
+
+                        if (!this.recognition) {
+                            NotificationSystem.showToast("Speech recognition not supported", "error");
+                            return;
+                        }
+
+                        ChromeAPI.setStorage("voiceControlEnabled", true);
+
+                        if (!extensionState.isVoiceListening) {
+                            extensionState.isVoiceListening = true;
+                            this.recognizedText = "";
+                            try {
+                                this.recognition.start();
+                            } catch (error) {
+                                console.error("Failed to start recognition:", error);
+                                NotificationSystem.showToast("Failed to start mic", "error");
+                                extensionState.isVoiceListening = false;
+                            }
+                        } else {
+                            extensionState.isVoiceListening = false;
+                            this.recognition.stop();
+                            setTimeout(() => {
+                                this.processVoiceCommand();
+                            }, 500);
+                        }
+                    }
+                },
+                true
+            );
+        },
+
+        // NEW: Extracted toggle logic into separate method
+        async handleVoiceToggle() {
+            console.log("Voice toggle triggered");
+
+            if (!extensionState.voiceControlEnabled) {
+                NotificationSystem.showToast("Voice control is disabled", "error");
+                return;
+            }
+
+            if (!this.recognition) {
+                NotificationSystem.showToast(
+                    "Speech recognition not supported",
+                    "error"
+                );
+                return;
+            }
+
+            ChromeAPI.setStorage("voiceControlEnabled", true);
+
+            if (!extensionState.isVoiceListening) {
+                extensionState.isVoiceListening = true;
+                this.recognizedText = "";
+                try {
+                    this.recognition.start();
+                } catch (error) {
+                    console.error("Failed to start recognition:", error);
+                    NotificationSystem.showToast("Failed to start mic", "error");
+                    extensionState.isVoiceListening = false;
+                }
+            } else {
+                extensionState.isVoiceListening = false;
+                this.recognition.stop();
+                setTimeout(() => {
+                    this.processVoiceCommand();
+                }, 500);
+            }
+        },
+
+        setupFocusTracking() {
+            document.addEventListener(
+                "focusin",
+                (e) => {
+                    if (DOMUtils.isTextEditable(e.target)) {
+                        this.lastFocusedInput = e.target;
+                    }
+                },
+                true
+            );
+
+            document.addEventListener("selectionchange", () => {
+                const selection = window.getSelection();
+                const selectedText = selection.toString().trim();
+
+                if (
+                    selectedText &&
+                    this.lastFocusedInput &&
+                    DOMUtils.isTextEditable(this.lastFocusedInput)
+                ) {
+                    const elementText = DOMUtils.getTextFromElement(
+                        this.lastFocusedInput
+                    );
+                    if (elementText.includes(selectedText)) {
+                        this.lastSelection = {
+                            text: selectedText,
+                            element: this.lastFocusedInput,
+                        };
+                    }
+                } else {
+                    this.lastSelection = null;
+                }
+            });
+        },
+
+        validateTextSelection() {
+            const selection = window.getSelection();
+            let selectedText = selection.toString().trim();
+            let focusedElement = this.lastFocusedInput;
+
+            if (!selectedText && this.lastSelection && this.lastSelection.text) {
+                selectedText = this.lastSelection.text;
+                focusedElement = this.lastSelection.element;
+            }
+
+            if (!focusedElement) {
+                return {
+                    isValid: false,
+                    error: "No text input field is focused",
+                    selectedText: null,
+                    focusedElement: null,
+                };
+            }
+
+            if (!selectedText) {
+                const elementText = DOMUtils.getTextFromElement(focusedElement);
+
+                if (!elementText || elementText.trim().length === 0) {
+                    return {
+                        isValid: false,
+                        error: "No text found in the input field",
+                        selectedText: null,
+                        focusedElement: null,
+                    };
+                }
+
+                selectedText = elementText;
+            } else {
+                const elementText = DOMUtils.getTextFromElement(focusedElement);
+                if (!elementText.includes(selectedText)) {
+                    return {
+                        isValid: false,
+                        error: "Selected text must be from the focused field",
+                        selectedText: null,
+                        focusedElement: null,
+                    };
+                }
+            }
+
+            return {
+                isValid: true,
+                selectedText: selectedText,
+                focusedElement: focusedElement,
+            };
+        },
+
+        async determineOperationType(instructions) {
+            if (typeof LanguageModel === "undefined") {
+                return true;
+            }
+
+            try {
+                const modelAvailability = await LanguageModel.availability();
+                if (modelAvailability === "unavailable") {
+                    return true;
+                }
+
+                const session = await LanguageModel.create({
+                    outputLanguage: "en",
+                    monitor(m) {
+                        m.addEventListener("downloadprogress", (e) => {
+                            console.log(`Downloaded ${e.loaded * 100}%`);
+                        });
+                    },
+                });
+
+                const instructionTypePrompt = `
         You are an instruction analyzer. Based on the following user instruction, determine whether it is asking for WRITING new content or REWRITING existing content.
         
         WRITING instructions ask to CREATE NEW CONTENT from scratch, such as:
@@ -821,88 +696,263 @@
         Instruction: "${instructions}"
         `;
 
-      const instructionTypeResponse = await session.prompt(
-        instructionTypePrompt,
-        { outputLanguage: "en" }
-      );
-      const instructionType = instructionTypeResponse.trim().toUpperCase();
-      session.destroy();
+                const instructionTypeResponse = await session.prompt(
+                    instructionTypePrompt,
+                    { outputLanguage: "en" }
+                );
+                const instructionType = instructionTypeResponse.trim().toUpperCase();
+                session.destroy();
 
-      const isWriting = instructionType === "WRITING";
+                return instructionType === "WRITING";
+            } catch (error) {
+                console.warn("Error determining operation type:", error);
+                return true;
+            }
+        },
 
-      if (isWriting) {
-        if (!("Writer" in window)) {
-          throw new Error("Writer API is not available in this browser.");
-        }
+        async processVoiceCommand() {
+            if (!this.recognizedText) {
+                NotificationSystem.showToast("No speech detected", "error");
+                return;
+            }
 
-        const writerAvailability = await Writer.availability();
-        if (writerAvailability === "unavailable") {
-          throw new Error("Writer API unavailable.");
-        }
+            const isWriteOperation = await this.determineOperationType(
+                this.recognizedText
+            );
 
-        const writer = await Writer.create({
-          monitor(monitor) {
-            monitor.addEventListener("downloadprogress", (e) => {
-              console.log(
-                `Downloading Writer model... ${Math.floor(
-                  (e.loaded / e.total) * 100
-                )}%`
-              );
+            let selectedText = "";
+            let focusedElement = this.lastFocusedInput;
+
+            if (isWriteOperation) {
+                if (!focusedElement || !DOMUtils.isTextEditable(focusedElement)) {
+                    NotificationSystem.showToast(
+                        "No text input field is focused",
+                        "error"
+                    );
+                    return;
+                }
+                selectedText = this.lastSelection ? this.lastSelection.text : "";
+            } else {
+                const validation = this.validateTextSelection();
+                if (!validation.isValid) {
+                    NotificationSystem.showToast(validation.error, "error");
+                    return;
+                }
+                selectedText = validation.selectedText;
+                focusedElement = validation.focusedElement;
+            }
+
+            const documentData = await this.getStoredDocumentContent();
+            const willUseDocumentContext = documentData && documentData.content;
+
+            if (willUseDocumentContext) {
+                NotificationSystem.showToast(
+                    `Processing with document context (${documentData.fileName})...`,
+                    "info",
+                    4000
+                );
+            } else {
+                NotificationSystem.showToast("Processing...", "info", 4000);
+            }
+
+            try {
+                const response = await this.rewriteText(
+                    selectedText,
+                    this.recognizedText
+                );
+
+                const { result, type } = response;
+                NotificationSystem.showToast(
+                    `${type === "WRITING" ? "Written" : "Rewritten"} successfully`,
+                    "success"
+                );
+
+                const currentSelection = window.getSelection();
+                const currentSelectedText = currentSelection.toString().trim();
+                const elementText = DOMUtils.getTextFromElement(focusedElement);
+
+                const shouldReplaceSelectedOnly =
+                    currentSelectedText &&
+                    elementText.includes(currentSelectedText) &&
+                    currentSelectedText === selectedText;
+
+                console.log("Selection detection:", {
+                    currentSelectedText: currentSelectedText,
+                    selectedText: selectedText,
+                    elementText: elementText,
+                    shouldReplaceSelectedOnly: shouldReplaceSelectedOnly,
+                    result: result,
+                });
+
+                if (shouldReplaceSelectedOnly) {
+                    console.log("Replacing selected text only");
+                    DOMUtils.replaceSelectedTextInElement(
+                        focusedElement,
+                        selectedText,
+                        result
+                    );
+                } else {
+                    console.log("Replacing full content");
+                    DOMUtils.setTextToElement(focusedElement, result);
+                }
+
+                this.recognizedText = "";
+            } catch (err) {
+                console.error(err);
+                NotificationSystem.showToast(`Error: ${err.message}`, "error");
+            } finally {
+                this.lastSelection = null;
+            }
+        },
+
+        async getStoredDocumentContent() {
+            const result = await ChromeAPI.getStorage([
+                "uploadedFileName",
+                "storedContent",
+            ]);
+            if (result && result.uploadedFileName && result.storedContent) {
+                return {
+                    fileName: result.uploadedFileName,
+                    content: result.storedContent,
+                };
+            }
+            return null;
+        },
+
+        async rewriteText(inputText, instructions) {
+            if (!("Rewriter" in self) && !("Writer" in window)) {
+                throw new Error(
+                    "Neither Rewriter nor Writer API is available in this browser."
+                );
+            }
+
+            if (typeof LanguageModel === "undefined") {
+                throw new Error(
+                    "Prompt (language model) API not available in this browser."
+                );
+            }
+
+            const modelAvailability = await LanguageModel.availability();
+            if (modelAvailability === "unavailable") {
+                throw new Error(
+                    "Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags."
+                );
+            }
+
+            const session = await LanguageModel.create({
+                outputLanguage: "en",
+                monitor(m) {
+                    m.addEventListener("downloadprogress", (e) => {
+                        console.log(`Downloaded ${e.loaded * 100}%`);
+                    });
+                },
             });
-          },
-        });
 
-        let result;
-        try {
-          const documentData = await this.getStoredDocumentContent();
+            const instructionTypePrompt = `
+        You are an instruction analyzer. Based on the following user instruction, determine whether it is asking for WRITING new content or REWRITING existing content.
+        
+        WRITING instructions ask to CREATE NEW CONTENT from scratch, such as:
+        - "Write an email to..."
+        - "Create a story about..."
+        - "Compose a letter..."
+        - "Generate content about..."
+        - "Write a summary of..."
+        
+        REWRITING instructions ask to IMPROVE OR MODIFY EXISTING TEXT, such as:
+        - "Make this more formal"
+        - "Improve this text"
+        - "Change the tone to..."
+        - "Rewrite this paragraph"
+        
+        Key distinction: If the instruction asks to CREATE something new, it's WRITING. If it asks to IMPROVE existing text, it's REWRITING.
+        
+        Respond with exactly one word: either "WRITING" or "REWRITING"
+        
+        Instruction: "${instructions}"
+        `;
 
-          const writeOptions = {};
-          let contextText = "";
+            const instructionTypeResponse = await session.prompt(
+                instructionTypePrompt,
+                { outputLanguage: "en" }
+            );
+            const instructionType = instructionTypeResponse.trim().toUpperCase();
+            session.destroy();
 
-          if (documentData && documentData.content) {
-            contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
-          }
+            const isWriting = instructionType === "WRITING";
 
-          if (inputText && inputText.trim()) {
-            contextText += `Current Input: ${inputText}`;
-          }
+            if (isWriting) {
+                if (!("Writer" in window)) {
+                    throw new Error("Writer API is not available in this browser.");
+                }
 
-          if (contextText.trim()) {
-            writeOptions.context = contextText.trim();
-          }
+                const writerAvailability = await Writer.availability();
+                if (writerAvailability === "unavailable") {
+                    throw new Error("Writer API unavailable.");
+                }
 
-          result = await writer.write(instructions, writeOptions);
-        } catch (writeError) {
-          console.error("Writer API error:", writeError);
-          result = await writer.write(instructions, {});
-        }
+                const writer = await Writer.create({
+                    monitor(monitor) {
+                        monitor.addEventListener("downloadprogress", (e) => {
+                            console.log(
+                                `Downloading Writer model... ${Math.floor(
+                                    (e.loaded / e.total) * 100
+                                )}%`
+                            );
+                        });
+                    },
+                });
 
-        let finalResult = result;
-        if (typeof result === "object" && result !== null) {
-          finalResult =
-            result.text ||
-            result.content ||
-            result.result ||
-            JSON.stringify(result);
-        }
+                let result;
+                try {
+                    const documentData = await this.getStoredDocumentContent();
 
-        writer.destroy();
-        return { result: finalResult, type: "WRITING" };
-      } else {
-        if (!("Rewriter" in window)) {
-          throw new Error("Rewriter API is not available in this browser.");
-        }
+                    const writeOptions = {};
+                    let contextText = "";
 
-        const toneSession = await LanguageModel.create({
-          outputLanguage: "en",
-          monitor(m) {
-            m.addEventListener("downloadprogress", (e) => {
-              console.log(`Downloaded ${e.loaded * 100}%`);
-            });
-          },
-        });
+                    if (documentData && documentData.content) {
+                        contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
+                    }
 
-        const tonePrompt = `
+                    if (inputText && inputText.trim()) {
+                        contextText += `Current Input: ${inputText}`;
+                    }
+
+                    if (contextText.trim()) {
+                        writeOptions.context = contextText.trim();
+                    }
+
+                    result = await writer.write(instructions, writeOptions);
+                } catch (writeError) {
+                    console.error("Writer API error:", writeError);
+                    result = await writer.write(instructions, {});
+                }
+
+                let finalResult = result;
+                if (typeof result === "object" && result !== null) {
+                    finalResult =
+                        result.text ||
+                        result.content ||
+                        result.result ||
+                        JSON.stringify(result);
+                }
+
+                writer.destroy();
+                return { result: finalResult, type: "WRITING" };
+            } else {
+                if (!("Rewriter" in window)) {
+                    throw new Error("Rewriter API is not available in this browser.");
+                }
+
+                const toneSession = await LanguageModel.create({
+                    outputLanguage: "en",
+                    monitor(m) {
+                        m.addEventListener("downloadprogress", (e) => {
+                            console.log(`Downloaded ${e.loaded * 100}%`);
+                        });
+                    },
+                });
+
+                const tonePrompt = `
           You are a tone analyzer. Based on the following user instruction, determine whether it suggests a tone change.
           Respond with exactly one label from the following list:
           "more-formal", "more-casual", or "as-is".
@@ -911,93 +961,93 @@
           Instruction: "${instructions}"
           `;
 
-        const toneResponse = await toneSession.prompt(tonePrompt, {
-          outputLanguage: "en",
-        });
-        const toneText = toneResponse.trim().toLowerCase();
-        toneSession.destroy();
+                const toneResponse = await toneSession.prompt(tonePrompt, {
+                    outputLanguage: "en",
+                });
+                const toneText = toneResponse.trim().toLowerCase();
+                toneSession.destroy();
 
-        let tone = ["more-formal", "more-casual", "as-is"].includes(toneText)
-          ? toneText
-          : "as-is";
+                let tone = ["more-formal", "more-casual", "as-is"].includes(toneText)
+                    ? toneText
+                    : "as-is";
 
-        const rewriterAvailability = await Rewriter.availability();
-        if (rewriterAvailability === "unavailable") {
-          throw new Error("Rewriter API unavailable.");
-        }
+                const rewriterAvailability = await Rewriter.availability();
+                if (rewriterAvailability === "unavailable") {
+                    throw new Error("Rewriter API unavailable.");
+                }
 
-        const rewriter = await Rewriter.create({
-          outputLanguage: "en",
-          tone: tone,
-          format: "plain-text",
-          length: "as-is",
-          monitor(monitor) {
-            monitor.addEventListener("downloadprogress", (e) => {
-              console.log(
-                `Downloading model... ${Math.floor(
-                  (e.loaded / e.total) * 100
-                )}%`
-              );
-            });
-          },
-        });
+                const rewriter = await Rewriter.create({
+                    outputLanguage: "en",
+                    tone: tone,
+                    format: "plain-text",
+                    length: "as-is",
+                    monitor(monitor) {
+                        monitor.addEventListener("downloadprogress", (e) => {
+                            console.log(
+                                `Downloading model... ${Math.floor(
+                                    (e.loaded / e.total) * 100
+                                )}%`
+                            );
+                        });
+                    },
+                });
 
-        const result = await rewriter.rewrite(inputText, {
-          outputLanguage: "en",
-          context: instructions || "Rewrite the text clearly.",
-        });
+                const result = await rewriter.rewrite(inputText, {
+                    outputLanguage: "en",
+                    context: instructions || "Rewrite the text clearly.",
+                });
 
-        rewriter.destroy();
-        return { result, type: "REWRITING", tone };
-      }
-    },
-  };
+                rewriter.destroy();
+                return { result, type: "REWRITING", tone };
+            }
+        },
+    };
 
-  // ============================================================================
-  // FLOATING TEXT INDICATOR FLOW (Extension 2 functionality)
-  // ============================================================================
+    // ============================================================================
+    // FLOATING TEXT INDICATOR FLOW (Extension 2 functionality)
+    // ============================================================================
 
-  const FloatingIndicatorFlow = {
-    host: null,
-    shadow: null,
-    container: null,
-    fileUploadRectangle: null,
-    coverLetterRectangle: null,
-    activeElement: null,
-    originalInputElement: null,
-    lastFocusedElement: null,
-    visible: false,
-    proofreaderSession: null,
-    hideTimeout: null,
-    uploadedFileName: null,
-    storedContent: null,
-    lastSelection: null,
-    buttonsVisible: false,
-    buttonHideTimeout: null,
+    const FloatingIndicatorFlow = {
+        host: null,
+        shadow: null,
+        container: null,
+        fileUploadRectangle: null,
+        coverLetterRectangle: null,
+        activeElement: null,
+        originalInputElement: null,
+        lastFocusedElement: null,
+        visible: false,
+        proofreaderSession: null,
+        hideTimeout: null,
+        uploadedFileName: null,
+        storedContent: null,
+        lastSelection: null,
+        buttonsVisible: false,
+        buttonHideTimeout: null,
 
-    init() {
-      this.createFloatingUI();
-      this.setupEventListeners();
-      this.checkStoredContent();
-    },
+        init() {
+            this.createFloatingUI();
+            this.setupEventListeners();
+            this.checkStoredContent();
+        },
 
-    createFloatingUI() {
-      const BUTTON_SIZE = 40;
-      const MARGIN = 6;
+        createFloatingUI() {
+            const BUTTON_SIZE = 40;
+            const MARGIN = 6;
 
-      this.host = document.createElement("div");
-      this.host.id = "__ai_text_assistant_floating_host";
-      this.host.style.position = "absolute";
-      this.host.style.top = "0";
-      this.host.style.left = "0";
-      this.host.style.zIndex = 2147483647;
-      this.host.style.pointerEvents = "none";
-      document.documentElement.appendChild(this.host);
+            this.host = document.createElement("div");
+            this.host.id = "__ai_text_assistant_floating_host";
+            this.host.style.position = "absolute";
+            this.host.style.top = "0";
+            this.host.style.left = "0";
+            this.host.style.zIndex = 2147483647;
+            this.host.style.pointerEvents = "none";
+            document.documentElement.appendChild(this.host);
 
-      this.shadow = this.host.attachShadow({ mode: "closed" });
+            this.shadow = this.host.attachShadow({ mode: "closed" });
 
-      const style = document.createElement("style");
-      style.textContent = `
+            const style = document.createElement("style");
+            style.textContent = `
         .container {
           position: absolute;
           width: ${BUTTON_SIZE}px;
@@ -1157,482 +1207,482 @@
 }
       `;
 
-      this.container = document.createElement("div");
-      this.container.className = "container";
-      const icon = document.createElement("div");
-      icon.className = "icon";
-      this.container.appendChild(icon);
+            this.container = document.createElement("div");
+            this.container.className = "container";
+            const icon = document.createElement("div");
+            icon.className = "icon";
+            this.container.appendChild(icon);
 
-      this.fileUploadRectangle = document.createElement("div");
-      this.fileUploadRectangle.className = "file-upload-rectangle";
+            this.fileUploadRectangle = document.createElement("div");
+            this.fileUploadRectangle.className = "file-upload-rectangle";
 
-      const fileIcon = document.createElement("div");
-      fileIcon.className = "file-icon";
-      fileIcon.textContent = "×";
+            const fileIcon = document.createElement("div");
+            fileIcon.className = "file-icon";
+            fileIcon.textContent = "×";
 
-      const fileText = document.createElement("span");
-      fileText.textContent = "No File";
-      fileText.id = "file-text-display";
+            const fileText = document.createElement("span");
+            fileText.textContent = "No File";
+            fileText.id = "file-text-display";
 
-      this.fileUploadRectangle.appendChild(fileIcon);
-      this.fileUploadRectangle.appendChild(fileText);
+            this.fileUploadRectangle.appendChild(fileIcon);
+            this.fileUploadRectangle.appendChild(fileText);
 
-      this.coverLetterRectangle = document.createElement("div");
-      this.coverLetterRectangle.className = "cover-letter-rectangle";
+            this.coverLetterRectangle = document.createElement("div");
+            this.coverLetterRectangle.className = "cover-letter-rectangle";
 
-      const coverLetterIcon = document.createElement("div");
-      coverLetterIcon.className = "cover-letter-icon";
-      coverLetterIcon.textContent = "✍";
+            const coverLetterIcon = document.createElement("div");
+            coverLetterIcon.className = "cover-letter-icon";
+            coverLetterIcon.textContent = "✍";
 
-      const coverLetterText = document.createElement("span");
-      coverLetterText.textContent = "Write Cover Letter";
+            const coverLetterText = document.createElement("span");
+            coverLetterText.textContent = "Write Cover Letter";
 
-      this.coverLetterRectangle.appendChild(coverLetterIcon);
-      this.coverLetterRectangle.appendChild(coverLetterText);
+            this.coverLetterRectangle.appendChild(coverLetterIcon);
+            this.coverLetterRectangle.appendChild(coverLetterText);
 
-      this.initializeIcon(icon);
-      this.shadow.appendChild(style);
-      this.shadow.appendChild(this.container);
-      this.shadow.appendChild(this.fileUploadRectangle);
-      this.shadow.appendChild(this.coverLetterRectangle);
-    },
+            this.initializeIcon(icon);
+            this.shadow.appendChild(style);
+            this.shadow.appendChild(this.container);
+            this.shadow.appendChild(this.fileUploadRectangle);
+            this.shadow.appendChild(this.coverLetterRectangle);
+        },
 
-    async initializeIcon(icon) {
-      try {
-        const extensionId = NotificationSystem.getExtensionInfo();
-        if (extensionId) {
-          icon.style.backgroundImage = `url(chrome-extension://${extensionId}/icon48.png)`;
-        }
-      } catch (error) {
-        console.warn("Failed to initialize icon:", error);
-      }
-    },
+        async initializeIcon(icon) {
+            try {
+                const extensionId = NotificationSystem.getExtensionInfo();
+                if (extensionId) {
+                    icon.style.backgroundImage = `url(chrome-extension://${extensionId}/icon48.png)`;
+                }
+            } catch (error) {
+                console.warn("Failed to initialize icon:", error);
+            }
+        },
 
-    setupEventListeners() {
-      // Focus tracking
-      document.addEventListener("focusin", (e) => {
-        const el = e.target;
-        if (DOMUtils.isTextEditable(el)) {
-          this.lastFocusedElement = el;
+        setupEventListeners() {
+            // Focus tracking
+            document.addEventListener("focusin", (e) => {
+                const el = e.target;
+                if (DOMUtils.isTextEditable(el)) {
+                    this.lastFocusedElement = el;
 
-          if (!this.visible || this.activeElement !== el) {
-            this.showForElement(el);
-          }
-        }
-      });
+                    if (!this.visible || this.activeElement !== el) {
+                        this.showForElement(el);
+                    }
+                }
+            });
 
-      document.addEventListener("focusout", (e) => {
-        if (extensionState.isProofreading) return;
+            document.addEventListener("focusout", (e) => {
+                if (extensionState.isProofreading) return;
 
-        // Don't hide if clicking on buttons
-        if (
-          e.relatedTarget &&
-          (e.relatedTarget === this.container ||
-            e.relatedTarget === this.fileUploadRectangle ||
-            e.relatedTarget === this.coverLetterRectangle ||
-            this.shadow.contains(e.relatedTarget))
-        ) {
-          return;
-        }
+                // Don't hide if clicking on buttons
+                if (
+                    e.relatedTarget &&
+                    (e.relatedTarget === this.container ||
+                        e.relatedTarget === this.fileUploadRectangle ||
+                        e.relatedTarget === this.coverLetterRectangle ||
+                        this.shadow.contains(e.relatedTarget))
+                ) {
+                    return;
+                }
 
-        if (this.hideTimeout) {
-          clearTimeout(this.hideTimeout);
-        }
+                if (this.hideTimeout) {
+                    clearTimeout(this.hideTimeout);
+                }
 
-        this.hideTimeout = setTimeout(() => {
-          if (!this.buttonsVisible && !extensionState.isProofreading) {
-            this.hide();
-          }
-          this.hideTimeout = null;
-        }, 300);
-      });
+                this.hideTimeout = setTimeout(() => {
+                    if (!this.buttonsVisible && !extensionState.isProofreading) {
+                        this.hide();
+                    }
+                    this.hideTimeout = null;
+                }, 300);
+            });
 
-      // Selection tracking
-      document.addEventListener("selectionchange", () => {
-        const selection = window.getSelection();
-        const selectedText = selection.toString().trim();
+            // Selection tracking
+            document.addEventListener("selectionchange", () => {
+                const selection = window.getSelection();
+                const selectedText = selection.toString().trim();
 
-        if (
-          selectedText &&
-          this.lastFocusedElement &&
-          DOMUtils.isTextEditable(this.lastFocusedElement)
-        ) {
-          const elementText = DOMUtils.getTextFromElement(
-            this.lastFocusedElement
-          );
-          if (elementText.includes(selectedText)) {
-            this.lastSelection = {
-              text: selectedText,
-              element: this.lastFocusedElement,
-            };
-          }
-        }
-      });
+                if (
+                    selectedText &&
+                    this.lastFocusedElement &&
+                    DOMUtils.isTextEditable(this.lastFocusedElement)
+                ) {
+                    const elementText = DOMUtils.getTextFromElement(
+                        this.lastFocusedElement
+                    );
+                    if (elementText.includes(selectedText)) {
+                        this.lastSelection = {
+                            text: selectedText,
+                            element: this.lastFocusedElement,
+                        };
+                    }
+                }
+            });
 
-      // Container click for proofreading
-      this.container.addEventListener("click", (e) => {
-        e.stopPropagation();
+            // Container click for proofreading
+            this.container.addEventListener("click", (e) => {
+                e.stopPropagation();
 
-        if (this.hideTimeout) {
-          clearTimeout(this.hideTimeout);
-          this.hideTimeout = null;
-        }
+                if (this.hideTimeout) {
+                    clearTimeout(this.hideTimeout);
+                    this.hideTimeout = null;
+                }
 
-        if (
-          !this.originalInputElement &&
-          this.lastFocusedElement &&
-          DOMUtils.isTextEditable(this.lastFocusedElement)
-        ) {
-          this.originalInputElement = this.lastFocusedElement;
-        }
+                if (
+                    !this.originalInputElement &&
+                    this.lastFocusedElement &&
+                    DOMUtils.isTextEditable(this.lastFocusedElement)
+                ) {
+                    this.originalInputElement = this.lastFocusedElement;
+                }
 
-        this.performAndApplyProofreading();
-      });
+                this.performAndApplyProofreading();
+            });
 
-      // Hover effects with proper button management
-      this.container.addEventListener("mouseenter", () => {
-        if (this.visible) {
-          if (this.buttonHideTimeout) {
-            clearTimeout(this.buttonHideTimeout);
-            this.buttonHideTimeout = null;
-          }
+            // Hover effects with proper button management
+            this.container.addEventListener("mouseenter", () => {
+                if (this.visible) {
+                    if (this.buttonHideTimeout) {
+                        clearTimeout(this.buttonHideTimeout);
+                        this.buttonHideTimeout = null;
+                    }
 
-          setTimeout(() => {
-            this.showButtons();
-          }, 300);
-        }
-      });
+                    setTimeout(() => {
+                        this.showButtons();
+                    }, 300);
+                }
+            });
 
-      this.container.addEventListener("mouseleave", () => {
-        this.scheduleButtonHide();
-      });
+            this.container.addEventListener("mouseleave", () => {
+                this.scheduleButtonHide();
+            });
 
-      // Keep buttons visible when hovering over them
-      this.fileUploadRectangle.addEventListener("mouseenter", () => {
-        if (this.buttonHideTimeout) {
-          clearTimeout(this.buttonHideTimeout);
-          this.buttonHideTimeout = null;
-        }
-        this.buttonsVisible = true;
-      });
+            // Keep buttons visible when hovering over them
+            this.fileUploadRectangle.addEventListener("mouseenter", () => {
+                if (this.buttonHideTimeout) {
+                    clearTimeout(this.buttonHideTimeout);
+                    this.buttonHideTimeout = null;
+                }
+                this.buttonsVisible = true;
+            });
 
-      this.fileUploadRectangle.addEventListener("mouseleave", () => {
-        this.scheduleButtonHide();
-      });
+            this.fileUploadRectangle.addEventListener("mouseleave", () => {
+                this.scheduleButtonHide();
+            });
 
-      this.coverLetterRectangle.addEventListener("mouseenter", () => {
-        if (this.buttonHideTimeout) {
-          clearTimeout(this.buttonHideTimeout);
-          this.buttonHideTimeout = null;
-        }
-        this.buttonsVisible = true;
-      });
+            this.coverLetterRectangle.addEventListener("mouseenter", () => {
+                if (this.buttonHideTimeout) {
+                    clearTimeout(this.buttonHideTimeout);
+                    this.buttonHideTimeout = null;
+                }
+                this.buttonsVisible = true;
+            });
 
-      this.coverLetterRectangle.addEventListener("mouseleave", () => {
-        this.scheduleButtonHide();
-      });
+            this.coverLetterRectangle.addEventListener("mouseleave", () => {
+                this.scheduleButtonHide();
+            });
 
-      // File upload rectangle click
-      this.fileUploadRectangle.addEventListener("click", (e) => {
-        e.stopPropagation();
+            // File upload rectangle click
+            this.fileUploadRectangle.addEventListener("click", (e) => {
+                e.stopPropagation();
 
-        if (this.uploadedFileName && this.storedContent) {
-          this.removeStoredContent();
-        }
-      });
+                if (this.uploadedFileName && this.storedContent) {
+                    this.removeStoredContent();
+                }
+            });
 
-      // Cover letter rectangle click
-      this.coverLetterRectangle.addEventListener("click", (e) => {
-        e.stopPropagation();
+            // Cover letter rectangle click
+            this.coverLetterRectangle.addEventListener("click", (e) => {
+                e.stopPropagation();
 
-        ChromeAPI.getStorage(["uploadedFileName", "storedContent"]).then(
-          (result) => {
-            if (!result || !result.uploadedFileName || !result.storedContent) {
-              NotificationSystem.showToast(
-                "No file attached. Please upload a document first.",
-                "error"
-              );
-              return;
+                ChromeAPI.getStorage(["uploadedFileName", "storedContent"]).then(
+                    (result) => {
+                        if (!result || !result.uploadedFileName || !result.storedContent) {
+                            NotificationSystem.showToast(
+                                "No file attached. Please upload a document first.",
+                                "error"
+                            );
+                            return;
+                        }
+
+                        const webpageText = this.extractWebpageText();
+                        this.checkForJobDescription(webpageText, result.storedContent);
+                    }
+                );
+            });
+        },
+
+        showButtons() {
+            this.buttonsVisible = true;
+            this.fileUploadRectangle.classList.add("visible");
+            this.coverLetterRectangle.classList.add("visible");
+        },
+
+        scheduleButtonHide() {
+            if (this.buttonHideTimeout) {
+                clearTimeout(this.buttonHideTimeout);
             }
 
-            const webpageText = this.extractWebpageText();
-            this.checkForJobDescription(webpageText, result.storedContent);
-          }
-        );
-      });
-    },
+            this.buttonHideTimeout = setTimeout(() => {
+                this.buttonsVisible = false;
+                this.fileUploadRectangle.classList.remove("visible");
+                this.coverLetterRectangle.classList.remove("visible");
+                this.buttonHideTimeout = null;
+            }, 200);
+        },
 
-    showButtons() {
-      this.buttonsVisible = true;
-      this.fileUploadRectangle.classList.add("visible");
-      this.coverLetterRectangle.classList.add("visible");
-    },
+        showForElement(el) {
+            if (!DOMUtils.isTextEditable(el)) {
+                return this.hide();
+            }
 
-    scheduleButtonHide() {
-      if (this.buttonHideTimeout) {
-        clearTimeout(this.buttonHideTimeout);
-      }
+            if (this.hideTimeout) {
+                clearTimeout(this.hideTimeout);
+                this.hideTimeout = null;
+            }
 
-      this.buttonHideTimeout = setTimeout(() => {
-        this.buttonsVisible = false;
-        this.fileUploadRectangle.classList.remove("visible");
-        this.coverLetterRectangle.classList.remove("visible");
-        this.buttonHideTimeout = null;
-      }, 200);
-    },
+            if (
+                this.activeElement &&
+                this.activeElement !== el &&
+                this.proofreaderSession
+            ) {
+                try {
+                    this.proofreaderSession.destroy();
+                    this.proofreaderSession = null;
+                } catch (error) {
+                    console.warn(
+                        "Error destroying proofreader session on element switch:",
+                        error
+                    );
+                }
+            }
 
-    showForElement(el) {
-      if (!DOMUtils.isTextEditable(el)) {
-        return this.hide();
-      }
+            this.activeElement = el;
+            this.originalInputElement = el;
+            this.positionNearElement(el);
+            this.container.classList.add("visible");
+            this.visible = true;
+        },
 
-      if (this.hideTimeout) {
-        clearTimeout(this.hideTimeout);
-        this.hideTimeout = null;
-      }
+        hide() {
+            if (extensionState.isProofreading || this.buttonsVisible) return;
 
-      if (
-        this.activeElement &&
-        this.activeElement !== el &&
-        this.proofreaderSession
-      ) {
-        try {
-          this.proofreaderSession.destroy();
-          this.proofreaderSession = null;
-        } catch (error) {
-          console.warn(
-            "Error destroying proofreader session on element switch:",
-            error
-          );
-        }
-      }
+            if (this.hideTimeout) {
+                clearTimeout(this.hideTimeout);
+                this.hideTimeout = null;
+            }
 
-      this.activeElement = el;
-      this.originalInputElement = el;
-      this.positionNearElement(el);
-      this.container.classList.add("visible");
-      this.visible = true;
-    },
+            this.container.classList.remove("visible");
+            this.fileUploadRectangle.classList.remove("visible");
+            this.coverLetterRectangle.classList.remove("visible");
+            this.visible = false;
+            this.buttonsVisible = false;
+            this.activeElement = null;
+            this.originalInputElement = null;
 
-    hide() {
-      if (extensionState.isProofreading || this.buttonsVisible) return;
+            if (this.proofreaderSession) {
+                try {
+                    this.proofreaderSession.destroy();
+                    this.proofreaderSession = null;
+                } catch (error) {
+                    console.warn("Error destroying proofreader session on hide:", error);
+                }
+            }
+        },
 
-      if (this.hideTimeout) {
-        clearTimeout(this.hideTimeout);
-        this.hideTimeout = null;
-      }
+        positionNearElement(el) {
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const left = rect.right + window.scrollX - 40 - 6;
+            const top = rect.bottom + window.scrollY - 40 - 6;
+            this.host.style.left = left + "px";
+            this.host.style.top = top + "px";
+        },
 
-      this.container.classList.remove("visible");
-      this.fileUploadRectangle.classList.remove("visible");
-      this.coverLetterRectangle.classList.remove("visible");
-      this.visible = false;
-      this.buttonsVisible = false;
-      this.activeElement = null;
-      this.originalInputElement = null;
+        async performAndApplyProofreading() {
+            const validation = this.validateTextSelection();
+            if (!validation.isValid) {
+                NotificationSystem.showToast(validation.error, "error");
+                return;
+            }
 
-      if (this.proofreaderSession) {
-        try {
-          this.proofreaderSession.destroy();
-          this.proofreaderSession = null;
-        } catch (error) {
-          console.warn("Error destroying proofreader session on hide:", error);
-        }
-      }
-    },
+            const selectedText = validation.selectedText;
+            const focusedElement = validation.focusedElement;
 
-    positionNearElement(el) {
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const left = rect.right + window.scrollX - 40 - 6;
-      const top = rect.bottom + window.scrollY - 40 - 6;
-      this.host.style.left = left + "px";
-      this.host.style.top = top + "px";
-    },
+            extensionState.isProofreading = true;
 
-    async performAndApplyProofreading() {
-      const validation = this.validateTextSelection();
-      if (!validation.isValid) {
-        NotificationSystem.showToast(validation.error, "error");
-        return;
-      }
+            try {
+                const session = await this.initializeProofreader();
+                if (!session) {
+                    throw new Error("Failed to initialize proofreader");
+                }
+                const icon = this.container.querySelector(".icon");
+                icon.classList.add("loader");
+                icon.style.backgroundImage = "none";
+                const proofreadResult = await session.proofread(selectedText);
 
-      const selectedText = validation.selectedText;
-      const focusedElement = validation.focusedElement;
+                if (proofreadResult && proofreadResult.correctedInput) {
+                    const correctedText = proofreadResult.correctedInput;
 
-      extensionState.isProofreading = true;
+                    const elementText = DOMUtils.getTextFromElement(focusedElement);
+                    const isSelectedText =
+                        this.lastSelection &&
+                        this.lastSelection.text &&
+                        elementText.includes(this.lastSelection.text);
 
-      try {
-        const session = await this.initializeProofreader();
-        if (!session) {
-          throw new Error("Failed to initialize proofreader");
-        }
-        const icon = this.container.querySelector(".icon");
-        icon.classList.add("loader");
-        icon.style.backgroundImage = "none";
-        const proofreadResult = await session.proofread(selectedText);
+                    if (isSelectedText && correctedText !== selectedText) {
+                        DOMUtils.replaceSelectedTextInElement(
+                            focusedElement,
+                            selectedText,
+                            correctedText
+                        );
+                        NotificationSystem.showToast(
+                            "Text corrected successfully",
+                            "success"
+                        );
+                    } else if (!isSelectedText && correctedText !== selectedText) {
+                        DOMUtils.setTextToElement(focusedElement, correctedText);
+                        NotificationSystem.showToast(
+                            "Text corrected successfully",
+                            "success"
+                        );
+                    } else {
+                        NotificationSystem.showToast("No corrections needed", "success");
+                    }
 
-        if (proofreadResult && proofreadResult.correctedInput) {
-          const correctedText = proofreadResult.correctedInput;
+                    this.lastSelection = null;
+                }
+            } catch (error) {
+                console.error("Proofreading failed:", error);
+                NotificationSystem.showToast("Proofreading failed", "error");
+                this.lastSelection = null;
+            } finally {
+                extensionState.isProofreading = false;
+                const icon = this.container.querySelector(".loader");
+                if (icon) {
+                    icon.classList.remove("loader");
+                    this.initializeIcon(icon); // restore original icon48
+                }
+                if (this.proofreaderSession) {
+                    try {
+                        this.proofreaderSession.destroy();
+                        this.proofreaderSession = null;
+                    } catch (error) {
+                        console.warn("Error destroying proofreader session:", error);
+                    }
+                }
+            }
+        },
 
-          const elementText = DOMUtils.getTextFromElement(focusedElement);
-          const isSelectedText =
-            this.lastSelection &&
-            this.lastSelection.text &&
-            elementText.includes(this.lastSelection.text);
+        async initializeProofreader() {
+            try {
+                if (typeof Proofreader === "undefined") {
+                    throw new Error("Chrome AI Proofreader API is not available");
+                }
 
-          if (isSelectedText && correctedText !== selectedText) {
-            DOMUtils.replaceSelectedTextInElement(
-              focusedElement,
-              selectedText,
-              correctedText
+                if (!this.proofreaderSession) {
+                    const options = {
+                        expectedInputLanguages: ["en"],
+                    };
+
+                    this.proofreaderSession = await Proofreader.create({
+                        monitor(m) {
+                            m.addEventListener("downloadprogress", (e) => {
+                                console.log(`Proofreader downloaded ${e.loaded * 100}%`);
+                            });
+                        },
+                        ...options,
+                    });
+                }
+                return this.proofreaderSession;
+            } catch (error) {
+                console.error("Failed to initialize Chrome AI Proofreader:", error);
+                throw error;
+            }
+        },
+
+        validateTextSelection() {
+            const selection = window.getSelection();
+            let selectedText = selection.toString().trim();
+            let focusedElement = this.originalInputElement || this.lastFocusedElement;
+
+            if (!selectedText && this.lastSelection && this.lastSelection.text) {
+                selectedText = this.lastSelection.text;
+                focusedElement = this.lastSelection.element;
+            }
+
+            if (!focusedElement) {
+                return {
+                    isValid: false,
+                    error: "No text input field is focused",
+                    selectedText: null,
+                    focusedElement: null,
+                };
+            }
+
+            if (!DOMUtils.isTextEditable(focusedElement)) {
+                return {
+                    isValid: false,
+                    error: "Focused element is not a text input field",
+                    selectedText: null,
+                    focusedElement: null,
+                };
+            }
+
+            if (!selectedText) {
+                const elementText = DOMUtils.getTextFromElement(focusedElement);
+
+                if (!elementText || elementText.trim().length === 0) {
+                    return {
+                        isValid: false,
+                        error: "No text found in the input field",
+                        selectedText: null,
+                        focusedElement: null,
+                    };
+                }
+
+                selectedText = elementText;
+            } else {
+                const elementText = DOMUtils.getTextFromElement(focusedElement);
+                if (!elementText.includes(selectedText)) {
+                    return {
+                        isValid: false,
+                        error: "Selected text must be from the focused field",
+                        selectedText: null,
+                        focusedElement: null,
+                    };
+                }
+            }
+
+            return {
+                isValid: true,
+                error: null,
+                selectedText: selectedText,
+                focusedElement: focusedElement,
+            };
+        },
+
+        extractWebpageText() {
+            const bodyClone = document.body.cloneNode(true);
+            const elementsToRemove = bodyClone.querySelectorAll(
+                "script, style, noscript"
             );
-            NotificationSystem.showToast(
-              "Text corrected successfully",
-              "success"
-            );
-          } else if (!isSelectedText && correctedText !== selectedText) {
-            DOMUtils.setTextToElement(focusedElement, correctedText);
-            NotificationSystem.showToast(
-              "Text corrected successfully",
-              "success"
-            );
-          } else {
-            NotificationSystem.showToast("No corrections needed", "success");
-          }
+            elementsToRemove.forEach((el) => el.remove());
 
-          this.lastSelection = null;
-        }
-      } catch (error) {
-        console.error("Proofreading failed:", error);
-        NotificationSystem.showToast("Proofreading failed", "error");
-        this.lastSelection = null;
-      } finally {
-        extensionState.isProofreading = false;
-        const icon = this.container.querySelector(".loader");
-        if (icon) {
-          icon.classList.remove("loader");
-          this.initializeIcon(icon); // restore original icon48
-        }
-        if (this.proofreaderSession) {
-          try {
-            this.proofreaderSession.destroy();
-            this.proofreaderSession = null;
-          } catch (error) {
-            console.warn("Error destroying proofreader session:", error);
-          }
-        }
-      }
-    },
+            const bodyText = bodyClone.innerText || bodyClone.textContent || "";
+            const cleanText = bodyText
+                .replace(/\s+/g, " ")
+                .replace(/\n\s*\n/g, "\n")
+                .trim();
 
-    async initializeProofreader() {
-      try {
-        if (typeof Proofreader === "undefined") {
-          throw new Error("Chrome AI Proofreader API is not available");
-        }
+            return cleanText;
+        },
 
-        if (!this.proofreaderSession) {
-          const options = {
-            expectedInputLanguages: ["en"],
-          };
+        async checkForJobDescription(text, storedContent) {
+            try {
+                NotificationSystem.showToast("Analyzing page...", "info", 4000);
 
-          this.proofreaderSession = await Proofreader.create({
-            monitor(m) {
-              m.addEventListener("downloadprogress", (e) => {
-                console.log(`Proofreader downloaded ${e.loaded * 100}%`);
-              });
-            },
-            ...options,
-          });
-        }
-        return this.proofreaderSession;
-      } catch (error) {
-        console.error("Failed to initialize Chrome AI Proofreader:", error);
-        throw error;
-      }
-    },
-
-    validateTextSelection() {
-      const selection = window.getSelection();
-      let selectedText = selection.toString().trim();
-      let focusedElement = this.originalInputElement || this.lastFocusedElement;
-
-      if (!selectedText && this.lastSelection && this.lastSelection.text) {
-        selectedText = this.lastSelection.text;
-        focusedElement = this.lastSelection.element;
-      }
-
-      if (!focusedElement) {
-        return {
-          isValid: false,
-          error: "No text input field is focused",
-          selectedText: null,
-          focusedElement: null,
-        };
-      }
-
-      if (!DOMUtils.isTextEditable(focusedElement)) {
-        return {
-          isValid: false,
-          error: "Focused element is not a text input field",
-          selectedText: null,
-          focusedElement: null,
-        };
-      }
-
-      if (!selectedText) {
-        const elementText = DOMUtils.getTextFromElement(focusedElement);
-
-        if (!elementText || elementText.trim().length === 0) {
-          return {
-            isValid: false,
-            error: "No text found in the input field",
-            selectedText: null,
-            focusedElement: null,
-          };
-        }
-
-        selectedText = elementText;
-      } else {
-        const elementText = DOMUtils.getTextFromElement(focusedElement);
-        if (!elementText.includes(selectedText)) {
-          return {
-            isValid: false,
-            error: "Selected text must be from the focused field",
-            selectedText: null,
-            focusedElement: null,
-          };
-        }
-      }
-
-      return {
-        isValid: true,
-        error: null,
-        selectedText: selectedText,
-        focusedElement: focusedElement,
-      };
-    },
-
-    extractWebpageText() {
-      const bodyClone = document.body.cloneNode(true);
-      const elementsToRemove = bodyClone.querySelectorAll(
-        "script, style, noscript"
-      );
-      elementsToRemove.forEach((el) => el.remove());
-
-      const bodyText = bodyClone.innerText || bodyClone.textContent || "";
-      const cleanText = bodyText
-        .replace(/\s+/g, " ")
-        .replace(/\n\s*\n/g, "\n")
-        .trim();
-
-      return cleanText;
-    },
-
-    async checkForJobDescription(text, storedContent) {
-      try {
-        NotificationSystem.showToast("Analyzing page...", "info", 4000);
-
-        const prompt = `Analyze the following text and determine if it contains a detailed job description. A job description typically includes:
+                const prompt = `Analyze the following text and determine if it contains a detailed job description. A job description typically includes:
         - Job title/position
         - Company information
         - Job responsibilities/duties
@@ -1646,66 +1696,66 @@
         
         Answer only "YES" if this contains a detailed job description, or "NO" if it does not.`;
 
-        const response = await this.callLanguageModel(
-          prompt,
-          "job description analysis"
-        );
-        const hasJobDescription = response.trim().toUpperCase();
+                const response = await this.callLanguageModel(
+                    prompt,
+                    "job description analysis"
+                );
+                const hasJobDescription = response.trim().toUpperCase();
 
-        if (hasJobDescription === "YES") {
-          this.generateCoverLetter(text, storedContent);
-        } else {
-          NotificationSystem.showToast(
-            "No job description found on this page",
-            "error"
-          );
-        }
-      } catch (error) {
-        console.error("Error checking for job description:", error);
-        NotificationSystem.showToast("Error analyzing page content", "error");
-      }
-    },
+                if (hasJobDescription === "YES") {
+                    this.generateCoverLetter(text, storedContent);
+                } else {
+                    NotificationSystem.showToast(
+                        "No job description found on this page",
+                        "error"
+                    );
+                }
+            } catch (error) {
+                console.error("Error checking for job description:", error);
+                NotificationSystem.showToast("Error analyzing page content", "error");
+            }
+        },
 
-    async callLanguageModel(prompt, operationName = "LanguageModel operation") {
-      try {
-        const modelAvailability = await LanguageModel.availability();
-        if (modelAvailability === "unavailable") {
-          throw new Error(
-            "Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags."
-          );
-        }
+        async callLanguageModel(prompt, operationName = "LanguageModel operation") {
+            try {
+                const modelAvailability = await LanguageModel.availability();
+                if (modelAvailability === "unavailable") {
+                    throw new Error(
+                        "Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags."
+                    );
+                }
 
-        const session = await LanguageModel.create({
-          outputLanguage: "en",
-          monitor(m) {
-            m.addEventListener("downloadprogress", (e) => {
-              console.log(`Downloaded ${e.loaded * 100}%`);
-            });
-          },
-        });
+                const session = await LanguageModel.create({
+                    outputLanguage: "en",
+                    monitor(m) {
+                        m.addEventListener("downloadprogress", (e) => {
+                            console.log(`Downloaded ${e.loaded * 100}%`);
+                        });
+                    },
+                });
 
-        const response = await session.prompt(prompt, { outputLanguage: "en" });
-        session.destroy();
+                const response = await session.prompt(prompt, { outputLanguage: "en" });
+                session.destroy();
 
-        return response;
-      } catch (error) {
-        console.error(
-          `Error with LanguageModel API for ${operationName}:`,
-          error
-        );
-        throw error;
-      }
-    },
+                return response;
+            } catch (error) {
+                console.error(
+                    `Error with LanguageModel API for ${operationName}:`,
+                    error
+                );
+                throw error;
+            }
+        },
 
-    async generateCoverLetter(jobDescriptionText, resumeContent) {
-      try {
-        NotificationSystem.showToast(
-          "Generating cover letter...",
-          "info",
-          4000
-        );
+        async generateCoverLetter(jobDescriptionText, resumeContent) {
+            try {
+                NotificationSystem.showToast(
+                    "Generating cover letter...",
+                    "info",
+                    4000
+                );
 
-        const coverLetterPrompt = `# Job Description from Webpage
+                const coverLetterPrompt = `# Job Description from Webpage
 
 ${jobDescriptionText}
 
@@ -1726,231 +1776,231 @@ Please generate a professional cover letter that:
 
 Generate a complete cover letter that the candidate can use for this job application.`;
 
-        const coverLetter = await this.callLanguageModel(
-          coverLetterPrompt,
-          "cover letter generation"
-        );
+                const coverLetter = await this.callLanguageModel(
+                    coverLetterPrompt,
+                    "cover letter generation"
+                );
 
-        this.insertCoverLetterIntoInput(coverLetter);
-      } catch (error) {
-        console.error("Error generating cover letter:", error);
-        NotificationSystem.showToast("Error generating cover letter", "error");
-      }
-    },
+                this.insertCoverLetterIntoInput(coverLetter);
+            } catch (error) {
+                console.error("Error generating cover letter:", error);
+                NotificationSystem.showToast("Error generating cover letter", "error");
+            }
+        },
 
-    insertCoverLetterIntoInput(coverLetter) {
-      try {
-        const targetElement =
-          this.originalInputElement || this.lastFocusedElement;
+        insertCoverLetterIntoInput(coverLetter) {
+            try {
+                const targetElement =
+                    this.originalInputElement || this.lastFocusedElement;
 
-        if (!targetElement || !DOMUtils.isTextEditable(targetElement)) {
-          NotificationSystem.showToast("No text input found", "error");
-          return;
-        }
+                if (!targetElement || !DOMUtils.isTextEditable(targetElement)) {
+                    NotificationSystem.showToast("No text input found", "error");
+                    return;
+                }
 
-        DOMUtils.setTextToElement(targetElement, coverLetter);
-        NotificationSystem.showToast(
-          "Cover letter generated successfully",
-          "success"
-        );
-        targetElement.focus();
-      } catch (error) {
-        console.error("Error inserting cover letter:", error);
-        NotificationSystem.showToast("Error inserting cover letter", "error");
-      }
-    },
+                DOMUtils.setTextToElement(targetElement, coverLetter);
+                NotificationSystem.showToast(
+                    "Cover letter generated successfully",
+                    "success"
+                );
+                targetElement.focus();
+            } catch (error) {
+                console.error("Error inserting cover letter:", error);
+                NotificationSystem.showToast("Error inserting cover letter", "error");
+            }
+        },
 
-    checkStoredContent() {
-      ChromeAPI.getStorage(["uploadedFileName", "storedContent"]).then(
-        (result) => {
-          if (result && result.uploadedFileName && result.storedContent) {
-            this.uploadedFileName = result.uploadedFileName;
-            this.storedContent = result.storedContent;
-            this.updateFileButtonUI();
-          }
-        }
-      );
-    },
+        checkStoredContent() {
+            ChromeAPI.getStorage(["uploadedFileName", "storedContent"]).then(
+                (result) => {
+                    if (result && result.uploadedFileName && result.storedContent) {
+                        this.uploadedFileName = result.uploadedFileName;
+                        this.storedContent = result.storedContent;
+                        this.updateFileButtonUI();
+                    }
+                }
+            );
+        },
 
-    updateFileButtonUI() {
-      const fileTextElement = this.shadow.getElementById("file-text-display");
+        updateFileButtonUI() {
+            const fileTextElement = this.shadow.getElementById("file-text-display");
 
-      if (fileTextElement) {
-        if (this.uploadedFileName && this.storedContent) {
-          fileTextElement.textContent = `📎 ${this.uploadedFileName}`;
-        } else {
-          fileTextElement.textContent = "No File";
-        }
-      }
-    },
+            if (fileTextElement) {
+                if (this.uploadedFileName && this.storedContent) {
+                    fileTextElement.textContent = `📎 ${this.uploadedFileName}`;
+                } else {
+                    fileTextElement.textContent = "No File";
+                }
+            }
+        },
 
-    removeStoredContent() {
-      ChromeAPI.removeStorage(["uploadedFileName", "storedContent"]).then(
-        (success) => {
-          this.uploadedFileName = null;
-          this.storedContent = null;
-          this.updateFileButtonUI();
-          if (success) {
-            NotificationSystem.showToast("File removed", "success");
-          }
-        }
-      );
-    },
-  };
-
-  // ============================================================================
-  // EXTENSION INITIALIZATION AND STATE MANAGEMENT
-  // ============================================================================
-
-  // Initialize extension state from storage
-  ChromeAPI.getStorage([
-    "voiceControlEnabled",
-    "floatingIndicatorEnabled",
-  ]).then((result) => {
-    if (result) {
-      extensionState.voiceControlEnabled = result.voiceControlEnabled !== false;
-      extensionState.floatingIndicatorEnabled =
-        result.floatingIndicatorEnabled === true;
-
-      // Initialize flows based on state
-      if (extensionState.voiceControlEnabled) {
-        VoiceControlFlow.init();
-      }
-
-      if (extensionState.floatingIndicatorEnabled) {
-        FloatingIndicatorFlow.init();
-      }
-    } else {
-      // Default values if storage fails
-      extensionState.voiceControlEnabled = true;
-      extensionState.floatingIndicatorEnabled = false;
-      VoiceControlFlow.init();
-    }
-  });
-
-  // ============================================================================
-  // AI MODEL STATUS CHECKING FUNCTION
-  // ============================================================================
-
-  async function checkAIModelStatus() {
-    const results = {
-      languageModel: false,
-      writer: false,
-      rewriter: false,
-      proofreader: false,
+        removeStoredContent() {
+            ChromeAPI.removeStorage(["uploadedFileName", "storedContent"]).then(
+                (success) => {
+                    this.uploadedFileName = null;
+                    this.storedContent = null;
+                    this.updateFileButtonUI();
+                    if (success) {
+                        NotificationSystem.showToast("File removed", "success");
+                    }
+                }
+            );
+        },
     };
 
-    const missingFlags = [];
+    // ============================================================================
+    // EXTENSION INITIALIZATION AND STATE MANAGEMENT
+    // ============================================================================
 
-    try {
-      // Check LanguageModel availability
-      if (typeof LanguageModel !== "undefined") {
-        try {
-          const languageModelAvailability = await LanguageModel.availability();
-          results.languageModel = languageModelAvailability !== "unavailable";
-        } catch (error) {
-          console.warn("LanguageModel availability check failed:", error);
-          results.languageModel = false;
-        }
-      } else {
-        missingFlags.push("chrome://flags/#prompt-api-for-gemini-nano");
-      }
+    // Initialize extension state from storage
+    ChromeAPI.getStorage([
+        "voiceControlEnabled",
+        "floatingIndicatorEnabled",
+    ]).then((result) => {
+        if (result) {
+            extensionState.voiceControlEnabled = result.voiceControlEnabled !== false;
+            extensionState.floatingIndicatorEnabled =
+                result.floatingIndicatorEnabled === true;
 
-      // Check Writer availability
-      if (typeof Writer !== "undefined") {
-        try {
-          const writerAvailability = await Writer.availability();
-          results.writer = writerAvailability !== "unavailable";
-        } catch (error) {
-          console.warn("Writer availability check failed:", error);
-          results.writer = false;
-        }
-      } else {
-        missingFlags.push("chrome://flags/#writer-api-for-gemini-nano");
-      }
+            // Initialize flows based on state
+            if (extensionState.voiceControlEnabled) {
+                VoiceControlFlow.init();
+            }
 
-      // Check Rewriter availability
-      if (typeof Rewriter !== "undefined") {
-        try {
-          const rewriterAvailability = await Rewriter.availability();
-          results.rewriter = rewriterAvailability !== "unavailable";
-        } catch (error) {
-          console.warn("Rewriter availability check failed:", error);
-          results.rewriter = false;
-        }
-      } else {
-        missingFlags.push("chrome://flags/#rewriter-api-for-gemini-nano");
-      }
-
-      // Check Proofreader availability
-      if (typeof Proofreader !== "undefined") {
-        try {
-          const proofreaderAvailability = await Proofreader.availability();
-          results.proofreader = proofreaderAvailability !== "unavailable";
-        } catch (error) {
-          console.warn("Proofreader availability check failed:", error);
-          results.proofreader = false;
-        }
-      } else {
-        missingFlags.push("chrome://flags/#proofreader-api-for-gemini-nano");
-      }
-
-      // Add missing flags info to results
-      results.missingFlags = missingFlags;
-
-      console.log("AI Model Status Check Results:", results);
-      return results;
-    } catch (error) {
-      console.error("Error during AI model status check:", error);
-      throw error;
-    }
-  }
-
-  // Listen for state changes from popup
-  try {
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      if (request.action === "toggleVoiceControl") {
-        extensionState.voiceControlEnabled = request.enabled;
-        if (request.enabled) {
-          VoiceControlFlow.init();
-        }
-        sendResponse({ success: true });
-      } else if (request.action === "toggleFloatingIndicator") {
-        extensionState.floatingIndicatorEnabled = request.enabled;
-        if (request.enabled) {
-          FloatingIndicatorFlow.init();
+            if (extensionState.floatingIndicatorEnabled) {
+                FloatingIndicatorFlow.init();
+            }
         } else {
-          if (FloatingIndicatorFlow.host) {
-            FloatingIndicatorFlow.host.remove();
-          }
+            // Default values if storage fails
+            extensionState.voiceControlEnabled = true;
+            extensionState.floatingIndicatorEnabled = false;
+            VoiceControlFlow.init();
         }
-        sendResponse({ success: true });
-      } else if (request.action === "documentParsed") {
-        FloatingIndicatorFlow.checkStoredContent();
-        sendResponse({ success: true });
-      } else if (request.action === "checkAIModelStatus") {
-        // Handle AI model status check
-        checkAIModelStatus()
-          .then((results) => {
-            sendResponse({ success: true, results });
-          })
-          .catch((error) => {
-            console.error("Error checking AI model status:", error);
-            sendResponse({ success: false, error: error.message });
-          });
-        return true; // Keep message channel open for async response
-      }
     });
-  } catch (error) {
-    console.warn("Chrome runtime message listener setup failed:", error);
-  }
 
-  // Make functions globally accessible for popup communication
-  window.updateFileButtonUI = () => FloatingIndicatorFlow.updateFileButtonUI();
-  window.validateTextSelection = () =>
-    FloatingIndicatorFlow.validateTextSelection();
-  window.showToast = (message, type) =>
-    NotificationSystem.showToast(message, type);
+    // ============================================================================
+    // AI MODEL STATUS CHECKING FUNCTION
+    // ============================================================================
 
-  console.log("Nano Bot - Both flows initialized and ready");
+    async function checkAIModelStatus() {
+        const results = {
+            languageModel: false,
+            writer: false,
+            rewriter: false,
+            proofreader: false,
+        };
+
+        const missingFlags = [];
+
+        try {
+            // Check LanguageModel availability
+            if (typeof LanguageModel !== "undefined") {
+                try {
+                    const languageModelAvailability = await LanguageModel.availability();
+                    results.languageModel = languageModelAvailability !== "unavailable";
+                } catch (error) {
+                    console.warn("LanguageModel availability check failed:", error);
+                    results.languageModel = false;
+                }
+            } else {
+                missingFlags.push("chrome://flags/#prompt-api-for-gemini-nano");
+            }
+
+            // Check Writer availability
+            if (typeof Writer !== "undefined") {
+                try {
+                    const writerAvailability = await Writer.availability();
+                    results.writer = writerAvailability !== "unavailable";
+                } catch (error) {
+                    console.warn("Writer availability check failed:", error);
+                    results.writer = false;
+                }
+            } else {
+                missingFlags.push("chrome://flags/#writer-api-for-gemini-nano");
+            }
+
+            // Check Rewriter availability
+            if (typeof Rewriter !== "undefined") {
+                try {
+                    const rewriterAvailability = await Rewriter.availability();
+                    results.rewriter = rewriterAvailability !== "unavailable";
+                } catch (error) {
+                    console.warn("Rewriter availability check failed:", error);
+                    results.rewriter = false;
+                }
+            } else {
+                missingFlags.push("chrome://flags/#rewriter-api-for-gemini-nano");
+            }
+
+            // Check Proofreader availability
+            if (typeof Proofreader !== "undefined") {
+                try {
+                    const proofreaderAvailability = await Proofreader.availability();
+                    results.proofreader = proofreaderAvailability !== "unavailable";
+                } catch (error) {
+                    console.warn("Proofreader availability check failed:", error);
+                    results.proofreader = false;
+                }
+            } else {
+                missingFlags.push("chrome://flags/#proofreader-api-for-gemini-nano");
+            }
+
+            // Add missing flags info to results
+            results.missingFlags = missingFlags;
+
+            console.log("AI Model Status Check Results:", results);
+            return results;
+        } catch (error) {
+            console.error("Error during AI model status check:", error);
+            throw error;
+        }
+    }
+
+    // Listen for state changes from popup
+    try {
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+            if (request.action === "toggleVoiceControl") {
+                extensionState.voiceControlEnabled = request.enabled;
+                if (request.enabled) {
+                    VoiceControlFlow.init();
+                }
+                sendResponse({ success: true });
+            } else if (request.action === "toggleFloatingIndicator") {
+                extensionState.floatingIndicatorEnabled = request.enabled;
+                if (request.enabled) {
+                    FloatingIndicatorFlow.init();
+                } else {
+                    if (FloatingIndicatorFlow.host) {
+                        FloatingIndicatorFlow.host.remove();
+                    }
+                }
+                sendResponse({ success: true });
+            } else if (request.action === "documentParsed") {
+                FloatingIndicatorFlow.checkStoredContent();
+                sendResponse({ success: true });
+            } else if (request.action === "checkAIModelStatus") {
+                // Handle AI model status check
+                checkAIModelStatus()
+                    .then((results) => {
+                        sendResponse({ success: true, results });
+                    })
+                    .catch((error) => {
+                        console.error("Error checking AI model status:", error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                return true; // Keep message channel open for async response
+            }
+        });
+    } catch (error) {
+        console.warn("Chrome runtime message listener setup failed:", error);
+    }
+
+    // Make functions globally accessible for popup communication
+    window.updateFileButtonUI = () => FloatingIndicatorFlow.updateFileButtonUI();
+    window.validateTextSelection = () =>
+        FloatingIndicatorFlow.validateTextSelection();
+    window.showToast = (message, type) =>
+        NotificationSystem.showToast(message, type);
+
+    console.log("Nano Bot - Both flows initialized and ready");
 })();
