@@ -5,7 +5,7 @@
 
     // Check if Chrome extension context is valid
     if (!chrome || !chrome.runtime || !chrome.runtime.id) {
-        console.warn("Chrome extension context is invalid or not available");
+        console.warn('Chrome extension context is invalid or not available');
         return;
     }
 
@@ -20,26 +20,24 @@
         voiceControlEnabled: false,
         floatingIndicatorEnabled: false,
         isVoiceListening: false,
-        isProofreading: false,
+        isProofreading: false
     };
 
     // Shared DOM utilities
     const DOMUtils = {
         isTextEditable(el) {
             if (!el) return false;
-            return (
-                el.tagName === "INPUT" ||
+            return el.tagName === "INPUT" ||
                 el.tagName === "TEXTAREA" ||
                 el.isContentEditable ||
-                el.classList.contains("editable") ||
-                el.getAttribute("role") === "textbox" ||
-                el.getAttribute("aria-label")?.includes("Message Body")
-            );
+                el.classList.contains('editable') ||
+                el.getAttribute('role') === 'textbox' ||
+                el.getAttribute('aria-label')?.includes('Message Body');
         },
 
         getTextFromElement(el) {
-            if (!el) return "";
-            if (el.isContentEditable || el.classList.contains("editable")) {
+            if (!el) return '';
+            if (el.isContentEditable || el.classList.contains('editable')) {
                 return el.textContent.trim() || el.innerText.trim();
             } else {
                 return el.value.trim();
@@ -48,50 +46,42 @@
 
         setTextToElement(el, text) {
             if (!el) {
-                console.error("setTextToElement: No element provided");
+                console.error('setTextToElement: No element provided');
                 return;
             }
 
-            if (
-                el.isContentEditable ||
-                el.classList.contains("editable") ||
-                el.getAttribute("role") === "textbox"
-            ) {
-                if (el.tagName === "DIV") {
-                    const htmlText = text.replace(/\n/g, "<br>");
+            if (el.isContentEditable || el.classList.contains('editable') || el.getAttribute('role') === 'textbox') {
+                if (el.tagName === 'DIV') {
+                    const htmlText = text.replace(/\n/g, '<br>');
                     el.innerHTML = htmlText;
                 } else {
                     el.textContent = text;
                 }
 
-                el.dispatchEvent(new Event("input", { bubbles: true }));
-                el.dispatchEvent(new Event("change", { bubbles: true }));
-                el.dispatchEvent(new Event("keyup", { bubbles: true }));
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('keyup', { bubbles: true }));
                 el.focus();
-            } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+            } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
                 el.value = text;
-                el.dispatchEvent(new Event("input", { bubbles: true }));
-                el.dispatchEvent(new Event("change", { bubbles: true }));
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
             }
         },
 
         replaceSelectedTextInElement(el, originalText, correctedText) {
             if (!el) {
-                console.error("replaceSelectedTextInElement: No element provided");
+                console.error('replaceSelectedTextInElement: No element provided');
                 return;
             }
 
-            console.log("replaceSelectedTextInElement called:", {
+            console.log('replaceSelectedTextInElement called:', {
                 originalText: originalText,
                 correctedText: correctedText,
-                elementTag: el.tagName,
+                elementTag: el.tagName
             });
 
-            if (
-                el.isContentEditable ||
-                el.classList.contains("editable") ||
-                el.getAttribute("role") === "textbox"
-            ) {
+            if (el.isContentEditable || el.classList.contains('editable') || el.getAttribute('role') === 'textbox') {
                 // For contentEditable elements, use the browser's selection API to replace only selected text
                 const selection = window.getSelection();
 
@@ -99,10 +89,7 @@
                     const range = selection.getRangeAt(0);
 
                     // Check if the selection is within our target element
-                    if (
-                        el.contains(range.commonAncestorContainer) ||
-                        el === range.commonAncestorContainer
-                    ) {
+                    if (el.contains(range.commonAncestorContainer) || el === range.commonAncestorContainer) {
                         // Replace the selected content
                         range.deleteContents();
 
@@ -113,49 +100,49 @@
                         // Clear the selection
                         selection.removeAllRanges();
 
-                        console.log("Replaced selected text using selection API");
+                        console.log('Replaced selected text using selection API');
                     } else {
                         // Fallback to string replacement if selection is not in our element
-                        console.log("Selection not in target element, using fallback");
+                        console.log('Selection not in target element, using fallback');
                         this.fallbackTextReplacement(el, originalText, correctedText);
                     }
                 } else {
                     // No selection, use fallback
-                    console.log("No selection found, using fallback");
+                    console.log('No selection found, using fallback');
                     this.fallbackTextReplacement(el, originalText, correctedText);
                 }
 
-                el.dispatchEvent(new Event("input", { bubbles: true }));
-                el.dispatchEvent(new Event("change", { bubbles: true }));
-                el.dispatchEvent(new Event("keyup", { bubbles: true }));
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('keyup', { bubbles: true }));
                 el.focus();
-            } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
-                const currentValue = el.value || "";
+            } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                const currentValue = el.value || '';
                 const newValue = currentValue.replace(originalText, correctedText);
                 el.value = newValue;
-                el.dispatchEvent(new Event("input", { bubbles: true }));
-                el.dispatchEvent(new Event("change", { bubbles: true }));
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
             }
         },
 
         fallbackTextReplacement(el, originalText, correctedText) {
-            const currentText = el.textContent || el.innerText || "";
+            const currentText = el.textContent || el.innerText || '';
             const newText = currentText.replace(originalText, correctedText);
 
-            console.log("Fallback text replacement:", {
+            console.log('Fallback text replacement:', {
                 currentText: currentText,
                 newText: newText,
-                replacementMade: currentText !== newText,
+                replacementMade: currentText !== newText
             });
 
-            if (el.tagName === "DIV") {
+            if (el.tagName === 'DIV') {
                 // For DIV elements, preserve HTML formatting by converting newlines to <br>
-                const htmlText = newText.replace(/\n/g, "<br>");
+                const htmlText = newText.replace(/\n/g, '<br>');
                 el.innerHTML = htmlText;
             } else {
                 el.textContent = newText;
             }
-        },
+        }
     };
 
     // ============================================================================
@@ -169,17 +156,14 @@
                 try {
                     chrome.storage.local.set({ [key]: value }, () => {
                         if (chrome.runtime.lastError) {
-                            console.warn(
-                                "Chrome storage set error:",
-                                chrome.runtime.lastError
-                            );
+                            console.warn('Chrome storage set error:', chrome.runtime.lastError);
                             resolve(false);
                         } else {
                             resolve(true);
                         }
                     });
                 } catch (error) {
-                    console.warn("Chrome API call failed:", error);
+                    console.warn('Chrome API call failed:', error);
                     resolve(false);
                 }
             });
@@ -191,17 +175,14 @@
                 try {
                     chrome.storage.local.get(keys, (result) => {
                         if (chrome.runtime.lastError) {
-                            console.warn(
-                                "Chrome storage get error:",
-                                chrome.runtime.lastError
-                            );
+                            console.warn('Chrome storage get error:', chrome.runtime.lastError);
                             resolve(null);
                         } else {
                             resolve(result);
                         }
                     });
                 } catch (error) {
-                    console.warn("Chrome API call failed:", error);
+                    console.warn('Chrome API call failed:', error);
                     resolve(null);
                 }
             });
@@ -213,17 +194,14 @@
                 try {
                     chrome.storage.local.remove(keys, () => {
                         if (chrome.runtime.lastError) {
-                            console.warn(
-                                "Chrome storage remove error:",
-                                chrome.runtime.lastError
-                            );
+                            console.warn('Chrome storage remove error:', chrome.runtime.lastError);
                             resolve(false);
                         } else {
                             resolve(true);
                         }
                     });
                 } catch (error) {
-                    console.warn("Chrome API call failed:", error);
+                    console.warn('Chrome API call failed:', error);
                     resolve(false);
                 }
             });
@@ -235,21 +213,18 @@
                 try {
                     chrome.tabs.sendMessage(tabId, message, (response) => {
                         if (chrome.runtime.lastError) {
-                            console.warn(
-                                "Chrome tabs sendMessage error:",
-                                chrome.runtime.lastError
-                            );
+                            console.warn('Chrome tabs sendMessage error:', chrome.runtime.lastError);
                             resolve(false);
                         } else {
                             resolve(true);
                         }
                     });
                 } catch (error) {
-                    console.warn("Chrome API call failed:", error);
+                    console.warn('Chrome API call failed:', error);
                     resolve(false);
                 }
             });
-        },
+        }
     };
 
     // Shared notification system
@@ -257,12 +232,10 @@
         activeToasts: new Map(),
 
         createToastContainer() {
-            let toastContainer = document.getElementById(
-                "ai-text-assistant-toast-container"
-            );
+            let toastContainer = document.getElementById('ai-text-assistant-toast-container');
             if (!toastContainer) {
-                toastContainer = document.createElement("div");
-                toastContainer.id = "ai-text-assistant-toast-container";
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'ai-text-assistant-toast-container';
                 toastContainer.style.cssText = `
           position: fixed;
           top: 20px;
@@ -275,9 +248,9 @@
             return toastContainer;
         },
 
-        showToast(message, type = "success", duration = 3000) {
+        showToast(message, type = 'success', duration = 3000) {
             // Only play sound for success and error
-            if (type === "success" || type === "error") {
+            if (type === 'success' || type === 'error') {
                 this.playNotificationSound(type);
             }
 
@@ -291,25 +264,20 @@
 
             // Set default duration based on type if not specified or if 0
             if (duration === 0) {
-                if (type === "info") {
+                if (type === 'info') {
                     duration = 4000; // Info toasts stay a bit longer
-                } else if (type === "success") {
+                } else if (type === 'success') {
                     duration = 3000; // Success toasts
-                } else if (type === "error") {
+                } else if (type === 'error') {
                     duration = 5000; // Error toasts stay longer for user to read
                 } else {
                     duration = 3000; // Default fallback
                 }
             }
 
-            const toast = document.createElement("div");
+            const toast = document.createElement('div');
             toast.style.cssText = `
-        background: ${type === "success"
-                    ? "#4CAF50"
-                    : type === "error"
-                        ? "#f44336"
-                        : "#007bff"
-                };
+        background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#007bff'};
         color: white;
         padding: 12px 20px;
         border-radius: 4px;
@@ -328,8 +296,8 @@
         position: relative;
       `;
 
-            const closeBtn = document.createElement("span");
-            closeBtn.innerHTML = "×";
+            const closeBtn = document.createElement('span');
+            closeBtn.innerHTML = '×';
             closeBtn.style.cssText = `
         position: absolute;
         top: 5px;
@@ -339,7 +307,7 @@
         cursor: pointer;
         opacity: 0.8;
       `;
-            closeBtn.addEventListener("click", () => this.removeToast(toast));
+            closeBtn.addEventListener('click', () => this.removeToast(toast));
 
             toast.appendChild(document.createTextNode(message));
             toast.appendChild(closeBtn);
@@ -348,8 +316,8 @@
             this.activeToasts.set(message, toast);
 
             setTimeout(() => {
-                toast.style.opacity = "1";
-                toast.style.transform = "translateX(0)";
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(0)';
             }, 10);
 
             // Always set up auto-removal timeout
@@ -358,7 +326,7 @@
                 this.activeToasts.delete(message);
             }, duration);
 
-            toast.addEventListener("click", () => {
+            toast.addEventListener('click', () => {
                 if (autoRemoveTimeout) {
                     clearTimeout(autoRemoveTimeout);
                 }
@@ -368,8 +336,8 @@
         },
 
         removeToast(toastElement) {
-            toastElement.style.opacity = "0";
-            toastElement.style.transform = "translateX(100%)";
+            toastElement.style.opacity = '0';
+            toastElement.style.transform = 'translateX(100%)';
             setTimeout(() => {
                 if (toastElement.parentNode) {
                     toastElement.parentNode.removeChild(toastElement);
@@ -382,28 +350,24 @@
                 const extensionId = this.getExtensionInfo();
                 if (!extensionId) return;
 
-                const audioFileName = type === "error" ? "error.mp3" : "success.mp3";
+                const audioFileName = type === 'error' ? 'error.mp3' : 'success.mp3';
                 const audio = new Audio();
                 audio.src = `chrome-extension://${extensionId}/${audioFileName}`;
                 audio.volume = 0.7;
-                audio.play().catch((error) => {
-                    console.warn("Could not play notification sound:", error);
+                audio.play().catch(error => {
+                    console.warn('Could not play notification sound:', error);
                 });
             } catch (error) {
-                console.warn("Error playing notification sound:", error);
+                console.warn('Error playing notification sound:', error);
             }
         },
 
         getExtensionInfo() {
-            if (
-                typeof chrome !== "undefined" &&
-                chrome.runtime &&
-                chrome.runtime.id
-            ) {
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
                 return chrome.runtime.id;
             }
             return null;
-        },
+        }
     };
 
     // ============================================================================
@@ -411,7 +375,6 @@
     // ============================================================================
 
     const VoiceControlFlow = {
-        operatingSystem: window.navigator.platform,
         recognition: null,
         recognizedText: "",
         lastFocusedInput: null,
@@ -419,18 +382,12 @@
 
         init() {
             this.setupSpeechRecognition();
-            // Use keyboard listener on macOS, background command messaging elsewhere
-            if (!(typeof this.operatingSystem === "string" && this.operatingSystem.includes("Mac"))) {
-                this.setupMessageListener();
-            } else {
-                this.setupKeyboardShortcut();
-            }
+            this.setupKeyboardShortcut();
             this.setupFocusTracking();
         },
 
         setupSpeechRecognition() {
-            const SpeechRecognition =
-                window.SpeechRecognition || window.webkitSpeechRecognition;
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
                 console.warn("Speech recognition not supported in this browser");
                 return;
@@ -443,7 +400,7 @@
 
             this.recognition.onstart = () => {
                 console.log("Voice recognition started");
-                NotificationSystem.showToast("🎤 Speak now", "info", 4000);
+                NotificationSystem.showToast("🎤 Speak now", 'info', 4000);
             };
 
             this.recognition.onresult = (event) => {
@@ -456,7 +413,7 @@
 
             this.recognition.onerror = (event) => {
                 console.error("Speech recognition error:", event.error);
-                NotificationSystem.showToast(`Voice recognition failed`, "error");
+                NotificationSystem.showToast(`Voice recognition failed`, 'error');
                 extensionState.isVoiceListening = false;
             };
 
@@ -473,155 +430,64 @@
             };
         },
 
-        // NEW: Listen for messages from background script
-        setupMessageListener() {
-            chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-                if (message.action === "toggleVoiceRecording") {
-                    const currentFocused = document.activeElement;
-                    const hasFocusedEditable = currentFocused && DOMUtils.isTextEditable(currentFocused);
-                    if (!hasFocusedEditable) {
-                        NotificationSystem.showToast("Focus a text input before processing voice", "error");
-                        this.recognizedText = "";
+        setupKeyboardShortcut() {
+            document.addEventListener("keydown", async (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "q") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+
+                    if (!extensionState.voiceControlEnabled) {
+                        NotificationSystem.showToast("Voice control is disabled", 'error');
                         return;
                     }
-                    this.handleVoiceToggle();
-                    sendResponse({ success: true });
-                }
-                return true; // Keep channel open for async response
-            });
-        },
 
-        // Keyboard shortcut handler (mirrors implementation from test.js)
-        setupKeyboardShortcut() {
-            document.addEventListener(
-                "keydown",
-                async (e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "q") {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-
-                        const currentFocused = document.activeElement;
-                        const hasFocusedEditable = currentFocused && DOMUtils.isTextEditable(currentFocused);
-                        if (!hasFocusedEditable) {
-                            NotificationSystem.showToast("Focus a text input before processing voice", "error");
-                            this.recognizedText = "";
-                            return;
-                        }
-
-                        if (!extensionState.voiceControlEnabled) {
-                            NotificationSystem.showToast("Voice control is disabled", "error");
-                            return;
-                        }
-
-                        if (!this.recognition) {
-                            NotificationSystem.showToast("Speech recognition not supported", "error");
-                            return;
-                        }
-
-                        ChromeAPI.setStorage("voiceControlEnabled", true);
-
-                        if (!extensionState.isVoiceListening) {
-                            extensionState.isVoiceListening = true;
-                            this.recognizedText = "";
-                            try {
-                                this.recognition.start();
-                            } catch (error) {
-                                console.error("Failed to start recognition:", error);
-                                NotificationSystem.showToast("Failed to start mic", "error");
-                                extensionState.isVoiceListening = false;
-                            }
-                        } else {
-                            extensionState.isVoiceListening = false;
-                            this.recognition.stop();
-                            setTimeout(() => {
-                                this.processVoiceCommand();
-                            }, 500);
-                        }
+                    if (!this.recognition) {
+                        NotificationSystem.showToast("Speech recognition not supported", 'error');
+                        return;
                     }
-                },
-                true
-            );
-        },
 
-        // NEW: Extracted toggle logic into separate method
-        async handleVoiceToggle() {
-            console.log("Voice toggle triggered");
+                    ChromeAPI.setStorage('voiceControlEnabled', true);
 
-            if (!extensionState.voiceControlEnabled) {
-                NotificationSystem.showToast("Voice control is disabled", "error");
-                return;
-            }
-
-            // Require a currently focused editable element before starting mic
-            const activeEl = document.activeElement;
-            const hasFocusedEditable = activeEl && DOMUtils.isTextEditable(activeEl);
-            if (!hasFocusedEditable) {
-                // Also clear any previous selection tracking to avoid using stale targets
-                this.lastFocusedInput = null;
-                this.lastSelection = null;
-                NotificationSystem.showToast("Focus a text input before using voice (Ctrl/Cmd+Q)", "error");
-                return;
-            }
-            // Keep our tracking in sync with the current focus
-            this.lastFocusedInput = activeEl;
-
-            if (!this.recognition) {
-                NotificationSystem.showToast(
-                    "Speech recognition not supported",
-                    "error"
-                );
-                return;
-            }
-
-            ChromeAPI.setStorage("voiceControlEnabled", true);
-
-            if (!extensionState.isVoiceListening) {
-                extensionState.isVoiceListening = true;
-                this.recognizedText = "";
-                try {
-                    this.recognition.start();
-                } catch (error) {
-                    console.error("Failed to start recognition:", error);
-                    NotificationSystem.showToast("Failed to start mic", "error");
-                    extensionState.isVoiceListening = false;
+                    if (!extensionState.isVoiceListening) {
+                        extensionState.isVoiceListening = true;
+                        this.recognizedText = "";
+                        try {
+                            this.recognition.start();
+                        } catch (error) {
+                            console.error("Failed to start recognition:", error);
+                            NotificationSystem.showToast("Failed to start mic", 'error');
+                            extensionState.isVoiceListening = false;
+                        }
+                    } else {
+                        extensionState.isVoiceListening = false;
+                        this.recognition.stop();
+                        setTimeout(() => {
+                            this.processVoiceCommand();
+                        }, 500);
+                    }
                 }
-            } else {
-                extensionState.isVoiceListening = false;
-                this.recognition.stop();
-                setTimeout(() => {
-                    this.processVoiceCommand();
-                }, 500);
-            }
+            }, true);
         },
 
         setupFocusTracking() {
-            document.addEventListener(
-                "focusin",
-                (e) => {
-                    if (DOMUtils.isTextEditable(e.target)) {
-                        this.lastFocusedInput = e.target;
-                    }
-                },
-                true
-            );
+            document.addEventListener("focusin", (e) => {
+                if (DOMUtils.isTextEditable(e.target)) {
+                    this.lastFocusedInput = e.target;
+                }
+            }, true);
 
-            document.addEventListener("selectionchange", () => {
+            // Track text selection for selective rewriting
+            document.addEventListener('selectionchange', () => {
                 const selection = window.getSelection();
                 const selectedText = selection.toString().trim();
 
-                if (
-                    selectedText &&
-                    this.lastFocusedInput &&
-                    DOMUtils.isTextEditable(this.lastFocusedInput)
-                ) {
-                    const elementText = DOMUtils.getTextFromElement(
-                        this.lastFocusedInput
-                    );
+                if (selectedText && this.lastFocusedInput && DOMUtils.isTextEditable(this.lastFocusedInput)) {
+                    const elementText = DOMUtils.getTextFromElement(this.lastFocusedInput);
                     if (elementText.includes(selectedText)) {
                         this.lastSelection = {
                             text: selectedText,
-                            element: this.lastFocusedInput,
+                            element: this.lastFocusedInput
                         };
                     }
                 } else {
@@ -643,9 +509,9 @@
             if (!focusedElement) {
                 return {
                     isValid: false,
-                    error: "No text input field is focused",
+                    error: 'No text input field is focused',
                     selectedText: null,
-                    focusedElement: null,
+                    focusedElement: null
                 };
             }
 
@@ -655,9 +521,9 @@
                 if (!elementText || elementText.trim().length === 0) {
                     return {
                         isValid: false,
-                        error: "No text found in the input field",
+                        error: 'No text found in the input field',
                         selectedText: null,
-                        focusedElement: null,
+                        focusedElement: null
                     };
                 }
 
@@ -667,9 +533,9 @@
                 if (!elementText.includes(selectedText)) {
                     return {
                         isValid: false,
-                        error: "Selected text must be from the focused field",
+                        error: 'Selected text must be from the focused field',
                         selectedText: null,
-                        focusedElement: null,
+                        focusedElement: null
                     };
                 }
             }
@@ -677,19 +543,20 @@
             return {
                 isValid: true,
                 selectedText: selectedText,
-                focusedElement: focusedElement,
+                focusedElement: focusedElement
             };
         },
 
         async determineOperationType(instructions) {
             if (typeof LanguageModel === "undefined") {
+                // Fallback: if LanguageModel is not available, assume it's a WRITE operation
                 return true;
             }
 
             try {
                 const modelAvailability = await LanguageModel.availability();
                 if (modelAvailability === "unavailable") {
-                    return true;
+                    return true; // Default to WRITE if model unavailable
                 }
 
                 const session = await LanguageModel.create({
@@ -724,133 +591,111 @@
         Instruction: "${instructions}"
         `;
 
-                const instructionTypeResponse = await session.prompt(
-                    instructionTypePrompt,
-                    { outputLanguage: "en" }
-                );
+                const instructionTypeResponse = await session.prompt(instructionTypePrompt, { outputLanguage: "en" });
                 const instructionType = instructionTypeResponse.trim().toUpperCase();
                 session.destroy();
 
                 return instructionType === "WRITING";
             } catch (error) {
-                console.warn("Error determining operation type:", error);
-                return true;
+                console.warn('Error determining operation type:', error);
+                return true; // Default to WRITE on error
             }
         },
 
         async processVoiceCommand() {
-            // Guard: require a current focused editable element
-            const currentFocused = document.activeElement;
-            const hasFocusedEditable = currentFocused && DOMUtils.isTextEditable(currentFocused);
-            if (!hasFocusedEditable) {
-                NotificationSystem.showToast("Focus a text input before processing voice", "error");
-                this.recognizedText = "";
-                return;
-            }
-
             if (!this.recognizedText) {
-                NotificationSystem.showToast("No speech detected", "error");
+                NotificationSystem.showToast("No speech detected", 'error');
                 return;
             }
 
-            const isWriteOperation = await this.determineOperationType(
-                this.recognizedText
-            );
+            // First, determine if this is a WRITE or REWRITE operation
+            const isWriteOperation = await this.determineOperationType(this.recognizedText);
 
             let selectedText = "";
-            let focusedElement = currentFocused;
+            let focusedElement = this.lastFocusedInput;
 
             if (isWriteOperation) {
+                // For WRITE operations, we don't need existing text - just a focused input field
                 if (!focusedElement || !DOMUtils.isTextEditable(focusedElement)) {
-                    NotificationSystem.showToast(
-                        "No text input field is focused",
-                        "error"
-                    );
+                    NotificationSystem.showToast('No text input field is focused', 'error');
                     return;
                 }
+                // For WRITE operations, we can use empty text or any selected text as context
                 selectedText = this.lastSelection ? this.lastSelection.text : "";
             } else {
+                // For REWRITE operations, we need existing text to rewrite
                 const validation = this.validateTextSelection();
                 if (!validation.isValid) {
-                    NotificationSystem.showToast(validation.error, "error");
+                    NotificationSystem.showToast(validation.error, 'error');
                     return;
                 }
                 selectedText = validation.selectedText;
                 focusedElement = validation.focusedElement;
             }
 
+            // Check if document context will be used
             const documentData = await this.getStoredDocumentContent();
             const willUseDocumentContext = documentData && documentData.content;
 
             if (willUseDocumentContext) {
-                NotificationSystem.showToast(
-                    `Processing with document context (${documentData.fileName})...`,
-                    "info",
-                    4000
-                );
+                NotificationSystem.showToast(`Processing with document context (${documentData.fileName})...`, 'info', 4000);
             } else {
-                NotificationSystem.showToast("Processing...", "info", 4000);
+                NotificationSystem.showToast("Processing...", 'info', 4000);
             }
 
             try {
-                const response = await this.rewriteText(
-                    selectedText,
-                    this.recognizedText
-                );
+                const response = await this.rewriteText(selectedText, this.recognizedText);
 
                 const { result, type } = response;
                 NotificationSystem.showToast(
                     `${type === "WRITING" ? "Written" : "Rewritten"} successfully`,
-                    "success"
+                    'success'
                 );
 
+                // Check current selection at the time of processing
                 const currentSelection = window.getSelection();
                 const currentSelectedText = currentSelection.toString().trim();
                 const elementText = DOMUtils.getTextFromElement(focusedElement);
 
-                const shouldReplaceSelectedOnly =
-                    currentSelectedText &&
+                // Determine if we should replace only selected text or full content
+                const shouldReplaceSelectedOnly = currentSelectedText &&
                     elementText.includes(currentSelectedText) &&
                     currentSelectedText === selectedText;
 
-                console.log("Selection detection:", {
+                console.log('Selection detection:', {
                     currentSelectedText: currentSelectedText,
                     selectedText: selectedText,
                     elementText: elementText,
                     shouldReplaceSelectedOnly: shouldReplaceSelectedOnly,
-                    result: result,
+                    result: result
                 });
 
                 if (shouldReplaceSelectedOnly) {
-                    console.log("Replacing selected text only");
-                    DOMUtils.replaceSelectedTextInElement(
-                        focusedElement,
-                        selectedText,
-                        result
-                    );
+                    // For selected text, use replaceSelectedTextInElement but with proper formatting
+                    console.log('Replacing selected text only');
+                    DOMUtils.replaceSelectedTextInElement(focusedElement, selectedText, result);
                 } else {
-                    console.log("Replacing full content");
+                    // For full content, always use setTextToElement for proper formatting
+                    console.log('Replacing full content');
                     DOMUtils.setTextToElement(focusedElement, result);
                 }
 
                 this.recognizedText = "";
             } catch (err) {
                 console.error(err);
-                NotificationSystem.showToast(`Error: ${err.message}`, "error");
+                NotificationSystem.showToast(`Error: ${err.message}`, 'error');
             } finally {
+                // Clear selection after processing
                 this.lastSelection = null;
             }
         },
 
         async getStoredDocumentContent() {
-            const result = await ChromeAPI.getStorage([
-                "uploadedFileName",
-                "storedContent",
-            ]);
+            const result = await ChromeAPI.getStorage(['uploadedFileName', 'storedContent']);
             if (result && result.uploadedFileName && result.storedContent) {
                 return {
                     fileName: result.uploadedFileName,
-                    content: result.storedContent,
+                    content: result.storedContent
                 };
             }
             return null;
@@ -858,22 +703,16 @@
 
         async rewriteText(inputText, instructions) {
             if (!("Rewriter" in self) && !("Writer" in window)) {
-                throw new Error(
-                    "Neither Rewriter nor Writer API is available in this browser."
-                );
+                throw new Error("Neither Rewriter nor Writer API is available in this browser.");
             }
 
             if (typeof LanguageModel === "undefined") {
-                throw new Error(
-                    "Prompt (language model) API not available in this browser."
-                );
+                throw new Error("Prompt (language model) API not available in this browser.");
             }
 
             const modelAvailability = await LanguageModel.availability();
             if (modelAvailability === "unavailable") {
-                throw new Error(
-                    "Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags."
-                );
+                throw new Error("Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags.");
             }
 
             const session = await LanguageModel.create({
@@ -908,10 +747,7 @@
         Instruction: "${instructions}"
         `;
 
-            const instructionTypeResponse = await session.prompt(
-                instructionTypePrompt,
-                { outputLanguage: "en" }
-            );
+            const instructionTypeResponse = await session.prompt(instructionTypePrompt, { outputLanguage: "en" });
             const instructionType = instructionTypeResponse.trim().toUpperCase();
             session.destroy();
 
@@ -930,22 +766,20 @@
                 const writer = await Writer.create({
                     monitor(monitor) {
                         monitor.addEventListener("downloadprogress", (e) => {
-                            console.log(
-                                `Downloading Writer model... ${Math.floor(
-                                    (e.loaded / e.total) * 100
-                                )}%`
-                            );
+                            console.log(`Downloading Writer model... ${Math.floor((e.loaded / e.total) * 100)}%`);
                         });
                     },
                 });
 
                 let result;
                 try {
+                    // Check for stored document content to use as context
                     const documentData = await this.getStoredDocumentContent();
 
                     const writeOptions = {};
-                    let contextText = "";
+                    let contextText = '';
 
+                    // Build context from document content and input text
                     if (documentData && documentData.content) {
                         contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
                     }
@@ -966,11 +800,7 @@
 
                 let finalResult = result;
                 if (typeof result === "object" && result !== null) {
-                    finalResult =
-                        result.text ||
-                        result.content ||
-                        result.result ||
-                        JSON.stringify(result);
+                    finalResult = result.text || result.content || result.result || JSON.stringify(result);
                 }
 
                 writer.destroy();
@@ -998,15 +828,11 @@
           Instruction: "${instructions}"
           `;
 
-                const toneResponse = await toneSession.prompt(tonePrompt, {
-                    outputLanguage: "en",
-                });
+                const toneResponse = await toneSession.prompt(tonePrompt, { outputLanguage: "en" });
                 const toneText = toneResponse.trim().toLowerCase();
                 toneSession.destroy();
 
-                let tone = ["more-formal", "more-casual", "as-is"].includes(toneText)
-                    ? toneText
-                    : "as-is";
+                let tone = ["more-formal", "more-casual", "as-is"].includes(toneText) ? toneText : "as-is";
 
                 const rewriterAvailability = await Rewriter.availability();
                 if (rewriterAvailability === "unavailable") {
@@ -1020,11 +846,7 @@
                     length: "as-is",
                     monitor(monitor) {
                         monitor.addEventListener("downloadprogress", (e) => {
-                            console.log(
-                                `Downloading model... ${Math.floor(
-                                    (e.loaded / e.total) * 100
-                                )}%`
-                            );
+                            console.log(`Downloading model... ${Math.floor((e.loaded / e.total) * 100)}%`);
                         });
                     },
                 });
@@ -1037,7 +859,7 @@
                 rewriter.destroy();
                 return { result, type: "REWRITING", tone };
             }
-        },
+        }
     };
 
     // ============================================================================
@@ -1072,18 +894,18 @@
             const BUTTON_SIZE = 40;
             const MARGIN = 6;
 
-            this.host = document.createElement("div");
-            this.host.id = "__ai_text_assistant_floating_host";
-            this.host.style.position = "absolute";
-            this.host.style.top = "0";
-            this.host.style.left = "0";
+            this.host = document.createElement('div');
+            this.host.id = '__ai_text_assistant_floating_host';
+            this.host.style.position = 'absolute';
+            this.host.style.top = '0';
+            this.host.style.left = '0';
             this.host.style.zIndex = 2147483647;
-            this.host.style.pointerEvents = "none";
+            this.host.style.pointerEvents = 'none';
             document.documentElement.appendChild(this.host);
 
-            this.shadow = this.host.attachShadow({ mode: "closed" });
+            this.shadow = this.host.attachShadow({ mode: 'closed' });
 
-            const style = document.createElement("style");
+            const style = document.createElement('style');
             style.textContent = `
         .container {
           position: absolute;
@@ -1244,45 +1066,38 @@
 }
       `;
 
-            this.container = document.createElement("div");
-            this.container.className = "container";
-            const icon = document.createElement("div");
-            icon.className = "icon";
+            this.container = document.createElement('div');
+            this.container.className = 'container';
+            const icon = document.createElement('div');
+            icon.className = 'icon';
             this.container.appendChild(icon);
 
-            this.fileUploadRectangle = document.createElement("div");
-            this.fileUploadRectangle.className = "file-upload-rectangle";
+            this.fileUploadRectangle = document.createElement('div');
+            this.fileUploadRectangle.className = 'file-upload-rectangle';
 
-            const fileIcon = document.createElement("div");
-            fileIcon.className = "file-icon";
-            fileIcon.textContent = "×";
+            const fileIcon = document.createElement('div');
+            fileIcon.className = 'file-icon';
+            fileIcon.textContent = '×';
 
-            const fileText = document.createElement("span");
-            fileText.textContent = "No File";
-            fileText.id = "file-text-display";
+            const fileText = document.createElement('span');
+            fileText.textContent = 'No File';
+            fileText.id = 'file-text-display';
 
             this.fileUploadRectangle.appendChild(fileIcon);
             this.fileUploadRectangle.appendChild(fileText);
 
-            this.coverLetterRectangle = document.createElement("div");
-            this.coverLetterRectangle.className = "cover-letter-rectangle";
+            this.coverLetterRectangle = document.createElement('div');
+            this.coverLetterRectangle.className = 'cover-letter-rectangle';
 
-            const coverLetterIcon = document.createElement("div");
-            coverLetterIcon.className = "cover-letter-icon";
-            coverLetterIcon.textContent = "✍";
+            const coverLetterIcon = document.createElement('div');
+            coverLetterIcon.className = 'cover-letter-icon';
+            coverLetterIcon.textContent = '✍';
 
-            const coverLetterText = document.createElement("span");
-            coverLetterText.textContent = "Find Job Description";
-            coverLetterText.id = "cover-letter-action-text";
-
-            const coverLetterReset = document.createElement("span");
-            coverLetterReset.id = "cover-letter-reset";
-            coverLetterReset.textContent = "✕";
-            coverLetterReset.style.cssText = "margin-left:8px; font-weight:bold; cursor:pointer; opacity:0.7; display:none;";
+            const coverLetterText = document.createElement('span');
+            coverLetterText.textContent = 'Write Cover Letter';
 
             this.coverLetterRectangle.appendChild(coverLetterIcon);
             this.coverLetterRectangle.appendChild(coverLetterText);
-            this.coverLetterRectangle.appendChild(coverLetterReset);
 
             this.initializeIcon(icon);
             this.shadow.appendChild(style);
@@ -1298,13 +1113,13 @@
                     icon.style.backgroundImage = `url(chrome-extension://${extensionId}/icon48.png)`;
                 }
             } catch (error) {
-                console.warn("Failed to initialize icon:", error);
+                console.warn('Failed to initialize icon:', error);
             }
         },
 
         setupEventListeners() {
             // Focus tracking
-            document.addEventListener("focusin", (e) => {
+            document.addEventListener('focusin', (e) => {
                 const el = e.target;
                 if (DOMUtils.isTextEditable(el)) {
                     this.lastFocusedElement = el;
@@ -1315,17 +1130,16 @@
                 }
             });
 
-            document.addEventListener("focusout", (e) => {
+            document.addEventListener('focusout', (e) => {
                 if (extensionState.isProofreading) return;
 
                 // Don't hide if clicking on buttons
-                if (
-                    e.relatedTarget &&
-                    (e.relatedTarget === this.container ||
-                        e.relatedTarget === this.fileUploadRectangle ||
-                        e.relatedTarget === this.coverLetterRectangle ||
-                        this.shadow.contains(e.relatedTarget))
-                ) {
+                if (e.relatedTarget && (
+                    e.relatedTarget === this.container ||
+                    e.relatedTarget === this.fileUploadRectangle ||
+                    e.relatedTarget === this.coverLetterRectangle ||
+                    this.shadow.contains(e.relatedTarget)
+                )) {
                     return;
                 }
 
@@ -1342,29 +1156,23 @@
             });
 
             // Selection tracking
-            document.addEventListener("selectionchange", () => {
+            document.addEventListener('selectionchange', () => {
                 const selection = window.getSelection();
                 const selectedText = selection.toString().trim();
 
-                if (
-                    selectedText &&
-                    this.lastFocusedElement &&
-                    DOMUtils.isTextEditable(this.lastFocusedElement)
-                ) {
-                    const elementText = DOMUtils.getTextFromElement(
-                        this.lastFocusedElement
-                    );
+                if (selectedText && this.lastFocusedElement && DOMUtils.isTextEditable(this.lastFocusedElement)) {
+                    const elementText = DOMUtils.getTextFromElement(this.lastFocusedElement);
                     if (elementText.includes(selectedText)) {
                         this.lastSelection = {
                             text: selectedText,
-                            element: this.lastFocusedElement,
+                            element: this.lastFocusedElement
                         };
                     }
                 }
             });
 
             // Container click for proofreading
-            this.container.addEventListener("click", (e) => {
+            this.container.addEventListener('click', (e) => {
                 e.stopPropagation();
 
                 if (this.hideTimeout) {
@@ -1372,11 +1180,7 @@
                     this.hideTimeout = null;
                 }
 
-                if (
-                    !this.originalInputElement &&
-                    this.lastFocusedElement &&
-                    DOMUtils.isTextEditable(this.lastFocusedElement)
-                ) {
+                if (!this.originalInputElement && this.lastFocusedElement && DOMUtils.isTextEditable(this.lastFocusedElement)) {
                     this.originalInputElement = this.lastFocusedElement;
                 }
 
@@ -1384,7 +1188,7 @@
             });
 
             // Hover effects with proper button management
-            this.container.addEventListener("mouseenter", () => {
+            this.container.addEventListener('mouseenter', () => {
                 if (this.visible) {
                     if (this.buttonHideTimeout) {
                         clearTimeout(this.buttonHideTimeout);
@@ -1397,12 +1201,12 @@
                 }
             });
 
-            this.container.addEventListener("mouseleave", () => {
+            this.container.addEventListener('mouseleave', () => {
                 this.scheduleButtonHide();
             });
 
             // Keep buttons visible when hovering over them
-            this.fileUploadRectangle.addEventListener("mouseenter", () => {
+            this.fileUploadRectangle.addEventListener('mouseenter', () => {
                 if (this.buttonHideTimeout) {
                     clearTimeout(this.buttonHideTimeout);
                     this.buttonHideTimeout = null;
@@ -1410,11 +1214,11 @@
                 this.buttonsVisible = true;
             });
 
-            this.fileUploadRectangle.addEventListener("mouseleave", () => {
+            this.fileUploadRectangle.addEventListener('mouseleave', () => {
                 this.scheduleButtonHide();
             });
 
-            this.coverLetterRectangle.addEventListener("mouseenter", () => {
+            this.coverLetterRectangle.addEventListener('mouseenter', () => {
                 if (this.buttonHideTimeout) {
                     clearTimeout(this.buttonHideTimeout);
                     this.buttonHideTimeout = null;
@@ -1422,26 +1226,12 @@
                 this.buttonsVisible = true;
             });
 
-            this.coverLetterRectangle.addEventListener("mouseleave", () => {
+            this.coverLetterRectangle.addEventListener('mouseleave', () => {
                 this.scheduleButtonHide();
-            });
-
-            // New: Double-click anywhere to show the floating circle at cursor position
-            document.addEventListener('dblclick', (e) => {
-                // Ignore if clicking inside our shadow UI
-                const path = e.composedPath ? e.composedPath() : [];
-                const clickedInsideShadow = path.includes(this.host) || path.includes(this.container);
-                if (clickedInsideShadow) return;
-
-                // If double-click on editable element, keep original behavior via focus handler
-                if (DOMUtils.isTextEditable(e.target)) return;
-
-                // Show the widget near double-click position
-                this.showAtPosition(e.pageX, e.pageY);
             });
 
             // File upload rectangle click
-            this.fileUploadRectangle.addEventListener("click", (e) => {
+            this.fileUploadRectangle.addEventListener('click', (e) => {
                 e.stopPropagation();
 
                 if (this.uploadedFileName && this.storedContent) {
@@ -1449,26 +1239,26 @@
                 }
             });
 
-            // Cover letter rectangle click (new flow)
-            this.coverLetterRectangle.addEventListener("click", (e) => {
+            // Cover letter rectangle click
+            this.coverLetterRectangle.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.handleCoverLetterFlowClick();
-            });
 
-            // Tiny cross to reset to Find mode
-            const resetEl = this.coverLetterRectangle.querySelector('#cover-letter-reset');
-            if (resetEl) {
-                resetEl.addEventListener('click', (ev) => {
-                    ev.stopPropagation();
-                    this.resetCoverLetterFlow();
+                ChromeAPI.getStorage(['uploadedFileName', 'storedContent']).then((result) => {
+                    if (!result || !result.uploadedFileName || !result.storedContent) {
+                        NotificationSystem.showToast('No file attached. Please upload a document first.', 'error');
+                        return;
+                    }
+
+                    const webpageText = this.extractWebpageText();
+                    this.checkForJobDescription(webpageText, result.storedContent);
                 });
-            }
+            });
         },
 
         showButtons() {
             this.buttonsVisible = true;
-            this.fileUploadRectangle.classList.add("visible");
-            this.coverLetterRectangle.classList.add("visible");
+            this.fileUploadRectangle.classList.add('visible');
+            this.coverLetterRectangle.classList.add('visible');
         },
 
         scheduleButtonHide() {
@@ -1478,8 +1268,8 @@
 
             this.buttonHideTimeout = setTimeout(() => {
                 this.buttonsVisible = false;
-                this.fileUploadRectangle.classList.remove("visible");
-                this.coverLetterRectangle.classList.remove("visible");
+                this.fileUploadRectangle.classList.remove('visible');
+                this.coverLetterRectangle.classList.remove('visible');
                 this.buttonHideTimeout = null;
             }, 200);
         },
@@ -1494,26 +1284,19 @@
                 this.hideTimeout = null;
             }
 
-            if (
-                this.activeElement &&
-                this.activeElement !== el &&
-                this.proofreaderSession
-            ) {
+            if (this.activeElement && this.activeElement !== el && this.proofreaderSession) {
                 try {
                     this.proofreaderSession.destroy();
                     this.proofreaderSession = null;
                 } catch (error) {
-                    console.warn(
-                        "Error destroying proofreader session on element switch:",
-                        error
-                    );
+                    console.warn('Error destroying proofreader session on element switch:', error);
                 }
             }
 
             this.activeElement = el;
             this.originalInputElement = el;
             this.positionNearElement(el);
-            this.container.classList.add("visible");
+            this.container.classList.add('visible');
             this.visible = true;
         },
 
@@ -1525,9 +1308,9 @@
                 this.hideTimeout = null;
             }
 
-            this.container.classList.remove("visible");
-            this.fileUploadRectangle.classList.remove("visible");
-            this.coverLetterRectangle.classList.remove("visible");
+            this.container.classList.remove('visible');
+            this.fileUploadRectangle.classList.remove('visible');
+            this.coverLetterRectangle.classList.remove('visible');
             this.visible = false;
             this.buttonsVisible = false;
             this.activeElement = null;
@@ -1538,7 +1321,7 @@
                     this.proofreaderSession.destroy();
                     this.proofreaderSession = null;
                 } catch (error) {
-                    console.warn("Error destroying proofreader session on hide:", error);
+                    console.warn('Error destroying proofreader session on hide:', error);
                 }
             }
         },
@@ -1548,38 +1331,14 @@
             const rect = el.getBoundingClientRect();
             const left = rect.right + window.scrollX - 40 - 6;
             const top = rect.bottom + window.scrollY - 40 - 6;
-            this.host.style.left = left + "px";
-            this.host.style.top = top + "px";
-        },
-
-        // Show near an arbitrary page position (e.g., double-click anywhere)
-        showAtPosition(pageX, pageY) {
-            if (this.hideTimeout) {
-                clearTimeout(this.hideTimeout);
-                this.hideTimeout = null;
-            }
-            this.activeElement = null;
-            this.originalInputElement = null;
-            this.lastFocusedElement = null;
-            // Also clear any voice flow tracking of previously-focused inputs
-            try {
-                if (typeof VoiceControlFlow !== 'undefined') {
-                    VoiceControlFlow.lastFocusedInput = null;
-                    VoiceControlFlow.lastSelection = null;
-                }
-            } catch (e) {
-                // no-op
-            }
-            this.host.style.left = Math.max(0, pageX - 40 - 6) + "px";
-            this.host.style.top = Math.max(0, pageY - 40 - 6) + "px";
-            this.container.classList.add("visible");
-            this.visible = true;
+            this.host.style.left = left + 'px';
+            this.host.style.top = top + 'px';
         },
 
         async performAndApplyProofreading() {
             const validation = this.validateTextSelection();
             if (!validation.isValid) {
-                NotificationSystem.showToast(validation.error, "error");
+                NotificationSystem.showToast(validation.error, 'error');
                 return;
             }
 
@@ -1591,53 +1350,41 @@
             try {
                 const session = await this.initializeProofreader();
                 if (!session) {
-                    throw new Error("Failed to initialize proofreader");
+                    throw new Error('Failed to initialize proofreader');
                 }
-                const icon = this.container.querySelector(".icon");
-                icon.classList.add("loader");
-                icon.style.backgroundImage = "none";
+                const icon = this.container.querySelector('.icon');
+                icon.classList.add('loader');
+                icon.style.backgroundImage = 'none';
                 const proofreadResult = await session.proofread(selectedText);
 
                 if (proofreadResult && proofreadResult.correctedInput) {
                     const correctedText = proofreadResult.correctedInput;
 
                     const elementText = DOMUtils.getTextFromElement(focusedElement);
-                    const isSelectedText =
-                        this.lastSelection &&
-                        this.lastSelection.text &&
-                        elementText.includes(this.lastSelection.text);
+                    const isSelectedText = this.lastSelection && this.lastSelection.text && elementText.includes(this.lastSelection.text);
 
                     if (isSelectedText && correctedText !== selectedText) {
-                        DOMUtils.replaceSelectedTextInElement(
-                            focusedElement,
-                            selectedText,
-                            correctedText
-                        );
-                        NotificationSystem.showToast(
-                            "Text corrected successfully",
-                            "success"
-                        );
+                        DOMUtils.replaceSelectedTextInElement(focusedElement, selectedText, correctedText);
+                        NotificationSystem.showToast('Text corrected successfully', 'success');
                     } else if (!isSelectedText && correctedText !== selectedText) {
                         DOMUtils.setTextToElement(focusedElement, correctedText);
-                        NotificationSystem.showToast(
-                            "Text corrected successfully",
-                            "success"
-                        );
+                        NotificationSystem.showToast('Text corrected successfully', 'success');
                     } else {
-                        NotificationSystem.showToast("No corrections needed", "success");
+                        NotificationSystem.showToast('No corrections needed', 'success');
                     }
 
                     this.lastSelection = null;
                 }
+
             } catch (error) {
-                console.error("Proofreading failed:", error);
-                NotificationSystem.showToast("Proofreading failed", "error");
+                console.error('Proofreading failed:', error);
+                NotificationSystem.showToast('Proofreading failed', 'error');
                 this.lastSelection = null;
             } finally {
                 extensionState.isProofreading = false;
-                const icon = this.container.querySelector(".loader");
+                const icon = this.container.querySelector('.loader');
                 if (icon) {
-                    icon.classList.remove("loader");
+                    icon.classList.remove('loader');
                     this.initializeIcon(icon); // restore original icon48
                 }
                 if (this.proofreaderSession) {
@@ -1645,7 +1392,7 @@
                         this.proofreaderSession.destroy();
                         this.proofreaderSession = null;
                     } catch (error) {
-                        console.warn("Error destroying proofreader session:", error);
+                        console.warn('Error destroying proofreader session:', error);
                     }
                 }
             }
@@ -1653,18 +1400,18 @@
 
         async initializeProofreader() {
             try {
-                if (typeof Proofreader === "undefined") {
-                    throw new Error("Chrome AI Proofreader API is not available");
+                if (typeof Proofreader === 'undefined') {
+                    throw new Error('Chrome AI Proofreader API is not available');
                 }
 
                 if (!this.proofreaderSession) {
                     const options = {
-                        expectedInputLanguages: ["en"],
+                        expectedInputLanguages: ['en'],
                     };
 
                     this.proofreaderSession = await Proofreader.create({
                         monitor(m) {
-                            m.addEventListener("downloadprogress", (e) => {
+                            m.addEventListener('downloadprogress', (e) => {
                                 console.log(`Proofreader downloaded ${e.loaded * 100}%`);
                             });
                         },
@@ -1673,7 +1420,7 @@
                 }
                 return this.proofreaderSession;
             } catch (error) {
-                console.error("Failed to initialize Chrome AI Proofreader:", error);
+                console.error('Failed to initialize Chrome AI Proofreader:', error);
                 throw error;
             }
         },
@@ -1691,18 +1438,18 @@
             if (!focusedElement) {
                 return {
                     isValid: false,
-                    error: "No text input field is focused",
+                    error: 'No text input field is focused',
                     selectedText: null,
-                    focusedElement: null,
+                    focusedElement: null
                 };
             }
 
             if (!DOMUtils.isTextEditable(focusedElement)) {
                 return {
                     isValid: false,
-                    error: "Focused element is not a text input field",
+                    error: 'Focused element is not a text input field',
                     selectedText: null,
-                    focusedElement: null,
+                    focusedElement: null
                 };
             }
 
@@ -1712,9 +1459,9 @@
                 if (!elementText || elementText.trim().length === 0) {
                     return {
                         isValid: false,
-                        error: "No text found in the input field",
+                        error: 'No text found in the input field',
                         selectedText: null,
-                        focusedElement: null,
+                        focusedElement: null
                     };
                 }
 
@@ -1724,9 +1471,9 @@
                 if (!elementText.includes(selectedText)) {
                     return {
                         isValid: false,
-                        error: "Selected text must be from the focused field",
+                        error: 'Selected text must be from the focused field',
                         selectedText: null,
-                        focusedElement: null,
+                        focusedElement: null
                     };
                 }
             }
@@ -1735,21 +1482,19 @@
                 isValid: true,
                 error: null,
                 selectedText: selectedText,
-                focusedElement: focusedElement,
+                focusedElement: focusedElement
             };
         },
 
         extractWebpageText() {
             const bodyClone = document.body.cloneNode(true);
-            const elementsToRemove = bodyClone.querySelectorAll(
-                "script, style, noscript"
-            );
-            elementsToRemove.forEach((el) => el.remove());
+            const elementsToRemove = bodyClone.querySelectorAll('script, style, noscript');
+            elementsToRemove.forEach(el => el.remove());
 
-            const bodyText = bodyClone.innerText || bodyClone.textContent || "";
+            const bodyText = bodyClone.innerText || bodyClone.textContent || '';
             const cleanText = bodyText
-                .replace(/\s+/g, " ")
-                .replace(/\n\s*\n/g, "\n")
+                .replace(/\s+/g, ' ')
+                .replace(/\n\s*\n/g, '\n')
                 .trim();
 
             return cleanText;
@@ -1757,7 +1502,7 @@
 
         async checkForJobDescription(text, storedContent) {
             try {
-                NotificationSystem.showToast("Analyzing page...", "info", 4000);
+                NotificationSystem.showToast('Analyzing page...', 'info', 4000);
 
                 const prompt = `Analyze the following text and determine if it contains a detailed job description. A job description typically includes:
         - Job title/position
@@ -1773,23 +1518,18 @@
         
         Answer only "YES" if this contains a detailed job description, or "NO" if it does not.`;
 
-                const response = await this.callLanguageModel(
-                    prompt,
-                    "job description analysis"
-                );
+                const response = await this.callLanguageModel(prompt, "job description analysis");
                 const hasJobDescription = response.trim().toUpperCase();
 
-                if (hasJobDescription === "YES") {
+                if (hasJobDescription === 'YES') {
                     this.generateCoverLetter(text, storedContent);
                 } else {
-                    NotificationSystem.showToast(
-                        "No job description found on this page",
-                        "error"
-                    );
+                    NotificationSystem.showToast('No job description found on this page', 'error');
                 }
+
             } catch (error) {
-                console.error("Error checking for job description:", error);
-                NotificationSystem.showToast("Error analyzing page content", "error");
+                console.error('Error checking for job description:', error);
+                NotificationSystem.showToast('Error analyzing page content', 'error');
             }
         },
 
@@ -1797,9 +1537,7 @@
             try {
                 const modelAvailability = await LanguageModel.availability();
                 if (modelAvailability === "unavailable") {
-                    throw new Error(
-                        "Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags."
-                    );
+                    throw new Error("Language model unavailable. Enable #prompt-api-for-gemini-nano in chrome://flags.");
                 }
 
                 const session = await LanguageModel.create({
@@ -1815,22 +1553,16 @@
                 session.destroy();
 
                 return response;
+
             } catch (error) {
-                console.error(
-                    `Error with LanguageModel API for ${operationName}:`,
-                    error
-                );
+                console.error(`Error with LanguageModel API for ${operationName}:`, error);
                 throw error;
             }
         },
 
         async generateCoverLetter(jobDescriptionText, resumeContent) {
             try {
-                NotificationSystem.showToast(
-                    "Generating cover letter...",
-                    "info",
-                    4000
-                );
+                NotificationSystem.showToast('Generating cover letter...', 'info', 4000);
 
                 const coverLetterPrompt = `# Job Description from Webpage
 
@@ -1853,183 +1585,66 @@ Please generate a professional cover letter that:
 
 Generate a complete cover letter that the candidate can use for this job application.`;
 
-                const coverLetter = await this.callLanguageModel(
-                    coverLetterPrompt,
-                    "cover letter generation"
-                );
+                const coverLetter = await this.callLanguageModel(coverLetterPrompt, "cover letter generation");
 
                 this.insertCoverLetterIntoInput(coverLetter);
+
             } catch (error) {
-                console.error("Error generating cover letter:", error);
-                NotificationSystem.showToast("Error generating cover letter", "error");
+                console.error('Error generating cover letter:', error);
+                NotificationSystem.showToast('Error generating cover letter', 'error');
             }
         },
 
         insertCoverLetterIntoInput(coverLetter) {
             try {
-                const targetElement =
-                    this.originalInputElement || this.lastFocusedElement;
+                const targetElement = this.originalInputElement || this.lastFocusedElement;
 
                 if (!targetElement || !DOMUtils.isTextEditable(targetElement)) {
-                    NotificationSystem.showToast("No text input found", "error");
+                    NotificationSystem.showToast('No text input found', 'error');
                     return;
                 }
 
                 DOMUtils.setTextToElement(targetElement, coverLetter);
-                NotificationSystem.showToast(
-                    "Cover letter generated successfully",
-                    "success"
-                );
+                NotificationSystem.showToast('Cover letter generated successfully', 'success');
                 targetElement.focus();
+
             } catch (error) {
-                console.error("Error inserting cover letter:", error);
-                NotificationSystem.showToast("Error inserting cover letter", "error");
+                console.error('Error inserting cover letter:', error);
+                NotificationSystem.showToast('Error inserting cover letter', 'error');
             }
         },
 
         checkStoredContent() {
-            ChromeAPI.getStorage(["uploadedFileName", "storedContent"]).then(
-                (result) => {
-                    if (result && result.uploadedFileName && result.storedContent) {
-                        this.uploadedFileName = result.uploadedFileName;
-                        this.storedContent = result.storedContent;
-                        this.updateFileButtonUI();
-                    }
+            ChromeAPI.getStorage(['uploadedFileName', 'storedContent']).then((result) => {
+                if (result && result.uploadedFileName && result.storedContent) {
+                    this.uploadedFileName = result.uploadedFileName;
+                    this.storedContent = result.storedContent;
+                    this.updateFileButtonUI();
                 }
-            );
+            });
         },
 
         updateFileButtonUI() {
-            const fileTextElement = this.shadow.getElementById("file-text-display");
+            const fileTextElement = this.shadow.getElementById('file-text-display');
 
             if (fileTextElement) {
                 if (this.uploadedFileName && this.storedContent) {
                     fileTextElement.textContent = `📎 ${this.uploadedFileName}`;
                 } else {
-                    fileTextElement.textContent = "No File";
+                    fileTextElement.textContent = 'No File';
                 }
             }
         },
 
         removeStoredContent() {
-            ChromeAPI.removeStorage(["uploadedFileName", "storedContent"]).then(
-                (success) => {
-                    this.uploadedFileName = null;
-                    this.storedContent = null;
-                    this.updateFileButtonUI();
-                    if (success) {
-                        NotificationSystem.showToast("File removed", "success");
-                    }
+            ChromeAPI.removeStorage(['uploadedFileName', 'storedContent']).then((success) => {
+                this.uploadedFileName = null;
+                this.storedContent = null;
+                this.updateFileButtonUI();
+                if (success) {
+                    NotificationSystem.showToast('File removed', 'success');
                 }
-            );
-        },
-
-        // ---------------- Cover Letter Flow (Find -> Write/Download -> Reset) ----------------
-        coverLetterState: {
-            mode: 'find', // 'find' | 'ready'
-            jdText: null
-        },
-
-        setCoverLetterMode(mode) {
-            this.coverLetterState.mode = mode;
-            const textEl = this.shadow.getElementById('cover-letter-action-text');
-            const resetEl = this.shadow.getElementById('cover-letter-reset');
-            if (textEl) {
-                textEl.textContent = mode === 'find' ? 'Find Job Description' : 'Write/Download Cover Letter';
-            }
-            if (resetEl) {
-                resetEl.style.display = mode === 'find' ? 'none' : 'inline';
-            }
-        },
-
-        resetCoverLetterFlow() {
-            this.coverLetterState.jdText = null;
-            this.setCoverLetterMode('find');
-            ChromeAPI.removeStorage(['storedJDContent']);
-            NotificationSystem.showToast('Reset to Find Job Description', 'success');
-        },
-
-        handleCoverLetterFlowClick() {
-            if (this.coverLetterState.mode === 'find') {
-                const webpageText = this.extractWebpageText();
-                this.detectAndStoreJD(webpageText);
-            } else {
-                this.performCoverLetterWriteOrDownload();
-            }
-        },
-
-        async detectAndStoreJD(pageText) {
-            try {
-                NotificationSystem.showToast('Analyzing page...', 'info', 3000);
-                const prompt = `Analyze the following text and determine if it contains a detailed job description. Answer only "YES" or "NO".\n\n${pageText.substring(0, 2000)}`;
-                const response = await this.callLanguageModel(prompt, 'job description analysis');
-                const hasJD = (response || '').trim().toUpperCase() === 'YES';
-                if (!hasJD) {
-                    NotificationSystem.showToast('No job description found on this page', 'error');
-                    return;
-                }
-                this.coverLetterState.jdText = pageText;
-                await ChromeAPI.setStorage('storedJDContent', pageText);
-                this.setCoverLetterMode('ready');
-                NotificationSystem.showToast('Job description found. Ready to write.', 'success');
-            } catch (err) {
-                console.error('JD detection failed:', err);
-                NotificationSystem.showToast('Error analyzing page content', 'error');
-            }
-        },
-
-        async performCoverLetterWriteOrDownload() {
-            try {
-                // Validate resume presence now
-                const resume = await ChromeAPI.getStorage(['uploadedFileName', 'storedContent']);
-                if (!resume || !resume.uploadedFileName || !resume.storedContent) {
-                    NotificationSystem.showToast('No resume attached. Please upload a document first.', 'error');
-                    return;
-                }
-
-                // Get JD from state or storage
-                let jdText = this.coverLetterState.jdText;
-                if (!jdText) {
-                    const s = await ChromeAPI.getStorage(['storedJDContent']);
-                    jdText = s && s.storedJDContent ? s.storedJDContent : null;
-                }
-                if (!jdText) {
-                    NotificationSystem.showToast('Job description not available. Please Find Job Description again.', 'error');
-                    return;
-                }
-
-                const targetEl = this.originalInputElement || this.lastFocusedElement;
-                const hasTarget = targetEl && DOMUtils.isTextEditable(targetEl);
-
-                // Show processing toast before generation starts
-                NotificationSystem.showToast('Processing cover letter...', 'info', 4000);
-
-                const coverLetterPrompt = `# Job Description from Webpage\n\n${jdText}\n\n# Resume Content\n\n${resume.storedContent}\n\n# Instructions\n\nPlease generate a professional cover letter that:\n1. Addresses the specific requirements mentioned in the job description\n2. Highlights relevant experience and skills from the resume that match the job requirements\n3. Demonstrates understanding of the role and company\n4. Is well-structured with proper greeting, body paragraphs, and closing\n5. Is professional, engaging, and tailored to this specific position\n6. Is approximately 3-4 paragraphs in length\n7. Must include info from resume like name, address, phone number, email, etc. instead of using place holders like [Name], [Address], [Phone Number], [Email] NO BRACKETS.\n\nGenerate a complete cover letter that the candidate can use for this job application.`;
-                const coverLetter = await this.callLanguageModel(coverLetterPrompt, 'cover letter generation');
-
-                if (hasTarget) {
-                    DOMUtils.setTextToElement(targetEl, coverLetter);
-                    NotificationSystem.showToast('Cover letter inserted', 'success');
-                } else {
-                    // Download as text (can later switch to DOCX with a generator)
-                    const blob = new Blob([coverLetter], { type: 'text/plain;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'cover-letter.txt';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    NotificationSystem.showToast('Cover letter downloaded', 'success');
-                }
-
-                // Reset flow
-                this.resetCoverLetterFlow();
-            } catch (err) {
-                console.error('Write/Download cover letter failed:', err);
-                NotificationSystem.showToast('Failed to generate cover letter', 'error');
-            }
+            });
         }
     };
 
@@ -2038,14 +1653,10 @@ Generate a complete cover letter that the candidate can use for this job applica
     // ============================================================================
 
     // Initialize extension state from storage
-    ChromeAPI.getStorage([
-        "voiceControlEnabled",
-        "floatingIndicatorEnabled",
-    ]).then((result) => {
+    ChromeAPI.getStorage(['voiceControlEnabled', 'floatingIndicatorEnabled']).then((result) => {
         if (result) {
             extensionState.voiceControlEnabled = result.voiceControlEnabled !== false;
-            extensionState.floatingIndicatorEnabled =
-                result.floatingIndicatorEnabled === true;
+            extensionState.floatingIndicatorEnabled = result.floatingIndicatorEnabled === true;
 
             // Initialize flows based on state
             if (extensionState.voiceControlEnabled) {
@@ -2072,71 +1683,72 @@ Generate a complete cover letter that the candidate can use for this job applica
             languageModel: false,
             writer: false,
             rewriter: false,
-            proofreader: false,
+            proofreader: false
         };
 
         const missingFlags = [];
 
         try {
             // Check LanguageModel availability
-            if (typeof LanguageModel !== "undefined") {
+            if (typeof LanguageModel !== 'undefined') {
                 try {
                     const languageModelAvailability = await LanguageModel.availability();
-                    results.languageModel = languageModelAvailability !== "unavailable";
+                    results.languageModel = languageModelAvailability !== 'unavailable';
                 } catch (error) {
-                    console.warn("LanguageModel availability check failed:", error);
+                    console.warn('LanguageModel availability check failed:', error);
                     results.languageModel = false;
                 }
             } else {
-                missingFlags.push("chrome://flags/#prompt-api-for-gemini-nano");
+                missingFlags.push('chrome://flags/#prompt-api-for-gemini-nano');
             }
 
             // Check Writer availability
-            if (typeof Writer !== "undefined") {
+            if (typeof Writer !== 'undefined') {
                 try {
                     const writerAvailability = await Writer.availability();
-                    results.writer = writerAvailability !== "unavailable";
+                    results.writer = writerAvailability !== 'unavailable';
                 } catch (error) {
-                    console.warn("Writer availability check failed:", error);
+                    console.warn('Writer availability check failed:', error);
                     results.writer = false;
                 }
             } else {
-                missingFlags.push("chrome://flags/#writer-api-for-gemini-nano");
+                missingFlags.push('chrome://flags/#writer-api-for-gemini-nano');
             }
 
             // Check Rewriter availability
-            if (typeof Rewriter !== "undefined") {
+            if (typeof Rewriter !== 'undefined') {
                 try {
                     const rewriterAvailability = await Rewriter.availability();
-                    results.rewriter = rewriterAvailability !== "unavailable";
+                    results.rewriter = rewriterAvailability !== 'unavailable';
                 } catch (error) {
-                    console.warn("Rewriter availability check failed:", error);
+                    console.warn('Rewriter availability check failed:', error);
                     results.rewriter = false;
                 }
             } else {
-                missingFlags.push("chrome://flags/#rewriter-api-for-gemini-nano");
+                missingFlags.push('chrome://flags/#rewriter-api-for-gemini-nano');
             }
 
             // Check Proofreader availability
-            if (typeof Proofreader !== "undefined") {
+            if (typeof Proofreader !== 'undefined') {
                 try {
                     const proofreaderAvailability = await Proofreader.availability();
-                    results.proofreader = proofreaderAvailability !== "unavailable";
+                    results.proofreader = proofreaderAvailability !== 'unavailable';
                 } catch (error) {
-                    console.warn("Proofreader availability check failed:", error);
+                    console.warn('Proofreader availability check failed:', error);
                     results.proofreader = false;
                 }
             } else {
-                missingFlags.push("chrome://flags/#proofreader-api-for-gemini-nano");
+                missingFlags.push('chrome://flags/#proofreader-api-for-gemini-nano');
             }
 
             // Add missing flags info to results
             results.missingFlags = missingFlags;
 
-            console.log("AI Model Status Check Results:", results);
+            console.log('AI Model Status Check Results:', results);
             return results;
+
         } catch (error) {
-            console.error("Error during AI model status check:", error);
+            console.error('Error during AI model status check:', error);
             throw error;
         }
     }
@@ -2144,13 +1756,13 @@ Generate a complete cover letter that the candidate can use for this job applica
     // Listen for state changes from popup
     try {
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-            if (request.action === "toggleVoiceControl") {
+            if (request.action === 'toggleVoiceControl') {
                 extensionState.voiceControlEnabled = request.enabled;
                 if (request.enabled) {
                     VoiceControlFlow.init();
                 }
                 sendResponse({ success: true });
-            } else if (request.action === "toggleFloatingIndicator") {
+            } else if (request.action === 'toggleFloatingIndicator') {
                 extensionState.floatingIndicatorEnabled = request.enabled;
                 if (request.enabled) {
                     FloatingIndicatorFlow.init();
@@ -2160,32 +1772,28 @@ Generate a complete cover letter that the candidate can use for this job applica
                     }
                 }
                 sendResponse({ success: true });
-            } else if (request.action === "documentParsed") {
+            } else if (request.action === 'documentParsed') {
                 FloatingIndicatorFlow.checkStoredContent();
                 sendResponse({ success: true });
-            } else if (request.action === "checkAIModelStatus") {
+            } else if (request.action === 'checkAIModelStatus') {
                 // Handle AI model status check
-                checkAIModelStatus()
-                    .then((results) => {
-                        sendResponse({ success: true, results });
-                    })
-                    .catch((error) => {
-                        console.error("Error checking AI model status:", error);
-                        sendResponse({ success: false, error: error.message });
-                    });
+                checkAIModelStatus().then(results => {
+                    sendResponse({ success: true, results });
+                }).catch(error => {
+                    console.error('Error checking AI model status:', error);
+                    sendResponse({ success: false, error: error.message });
+                });
                 return true; // Keep message channel open for async response
             }
         });
     } catch (error) {
-        console.warn("Chrome runtime message listener setup failed:", error);
+        console.warn('Chrome runtime message listener setup failed:', error);
     }
 
     // Make functions globally accessible for popup communication
     window.updateFileButtonUI = () => FloatingIndicatorFlow.updateFileButtonUI();
-    window.validateTextSelection = () =>
-        FloatingIndicatorFlow.validateTextSelection();
-    window.showToast = (message, type) =>
-        NotificationSystem.showToast(message, type);
+    window.validateTextSelection = () => FloatingIndicatorFlow.validateTextSelection();
+    window.showToast = (message, type) => NotificationSystem.showToast(message, type);
 
     console.log("Nano Bot - Both flows initialized and ready");
 })();
