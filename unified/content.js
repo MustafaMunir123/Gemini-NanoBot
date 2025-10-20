@@ -2001,6 +2001,9 @@ Generate a complete cover letter that the candidate can use for this job applica
                 const targetEl = this.originalInputElement || this.lastFocusedElement;
                 const hasTarget = targetEl && DOMUtils.isTextEditable(targetEl);
 
+                // Show processing toast before generation starts
+                NotificationSystem.showToast('Processing cover letter...', 'info', 4000);
+
                 const coverLetterPrompt = `# Job Description from Webpage\n\n${jdText}\n\n# Resume Content\n\n${resume.storedContent}\n\n# Instructions\n\nPlease generate a professional cover letter that:\n1. Addresses the specific requirements mentioned in the job description\n2. Highlights relevant experience and skills from the resume that match the job requirements\n3. Demonstrates understanding of the role and company\n4. Is well-structured with proper greeting, body paragraphs, and closing\n5. Is professional, engaging, and tailored to this specific position\n6. Is approximately 3-4 paragraphs in length\n7. Must include info from resume like name, address, phone number, email, etc. instead of using place holders like [Name], [Address], [Phone Number], [Email] NO BRACKETS.\n\nGenerate a complete cover letter that the candidate can use for this job application.`;
                 const coverLetter = await this.callLanguageModel(coverLetterPrompt, 'cover letter generation');
 
