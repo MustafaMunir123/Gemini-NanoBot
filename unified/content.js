@@ -770,13 +770,28 @@
                 }
                 selectedText = this.lastSelection ? this.lastSelection.text : "";
             } else {
+                // This is a REWRITE task - check if input is empty
                 const validation = this.validateTextSelection();
                 if (!validation.isValid) {
-                    NotificationSystem.showToast(validation.error, "error");
-                    return;
+                    // If validation fails due to empty input, check if we can perform WRITE instead
+                    if (validation.error === "No text found in the input field") {
+                        // Check if we have a focused element for writing
+                        if (focusedElement && DOMUtils.isTextEditable(focusedElement)) {
+                            // Perform WRITE operation instead of REWRITE
+                            selectedText = "";
+                            console.log("REWRITE task with empty input - switching to WRITE operation");
+                        } else {
+                            NotificationSystem.showToast(validation.error, "error");
+                            return;
+                        }
+                    } else {
+                        NotificationSystem.showToast(validation.error, "error");
+                        return;
+                    }
+                } else {
+                    selectedText = validation.selectedText;
+                    focusedElement = validation.focusedElement;
                 }
-                selectedText = validation.selectedText;
-                focusedElement = validation.focusedElement;
             }
 
             const documentData = await this.getStoredDocumentContent();
@@ -793,10 +808,13 @@
             }
 
             try {
-                const response = await this.rewriteText(
-                    selectedText,
-                    this.recognizedText
-                );
+                let response;
+                // If we're in a REWRITE task but with empty input, use the WRITE operation directly
+                if (!isWriteOperation && selectedText === "") {
+                    response = await this.performWriteOperation(selectedText, this.recognizedText);
+                } else {
+                    response = await this.rewriteText(selectedText, this.recognizedText);
+                }
 
                 const { result, type } = response;
                 NotificationSystem.showToast(
@@ -854,6 +872,70 @@
                 };
             }
             return null;
+        },
+
+        async performWriteOperation(inputText, instructions) {
+            if (!("Writer" in window)) {
+                throw new Error("Writer API is not available in this browser.");
+            }
+
+            const writerAvailability = await Writer.availability();
+            if (writerAvailability === "unavailable") {
+                throw new Error("Writer API unavailable.");
+            }
+
+            const writer = await Writer.create({
+                monitor(monitor) {
+                    monitor.addEventListener("downloadprogress", (e) => {
+                        console.log(
+                            `Downloading Writer model... ${Math.floor(
+                                (e.loaded / e.total) * 100
+                            )}%`
+                        );
+                    });
+                },
+            });
+
+            let result;
+            try {
+                const documentData = await this.getStoredDocumentContent();
+
+                const writeOptions = {};
+                let contextText = "";
+
+                if (documentData && documentData.content) {
+                    contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
+                }
+
+                if (inputText && inputText.trim()) {
+                    contextText += `Current Input: ${inputText}`;
+                }
+
+                if (contextText.trim()) {
+                    writeOptions.context = contextText.trim();
+                }
+
+                // Add the first person narrative instruction to the writer's prompt
+                const enhancedInstructions = `${instructions}\n\nYou are writing answers from the perspective of the user. Always use the first person narrative (I, me, my) as if you are the candidate themselves. Do not refer to the user in the third person (he, she, they, or their name).`;
+
+                result = await writer.write(enhancedInstructions, writeOptions);
+            } catch (writeError) {
+                console.error("Writer API error:", writeError);
+                const enhancedInstructions = `${instructions}\n\nYou are writing answers from the perspective of the user. Always use the first person narrative (I, me, my) as if you are the candidate themselves. Do not refer to the user in the third person (he, she, they, or their name).`;
+                result = await writer.write(enhancedInstructions, {});
+            }
+
+            let finalResult = result;
+            if (typeof result === "object" && result !== null) {
+                finalResult =
+                    result.text ||
+                    result.content ||
+                    result.result ||
+                    JSON.stringify(result);
+            }
+
+            writer.destroy();
+            return { result: finalResult, type: "WRITING" };
         },
 
         async rewriteText(inputText, instructions) {
@@ -918,63 +1000,7 @@
             const isWriting = instructionType === "WRITING";
 
             if (isWriting) {
-                if (!("Writer" in window)) {
-                    throw new Error("Writer API is not available in this browser.");
-                }
-
-                const writerAvailability = await Writer.availability();
-                if (writerAvailability === "unavailable") {
-                    throw new Error("Writer API unavailable.");
-                }
-
-                const writer = await Writer.create({
-                    monitor(monitor) {
-                        monitor.addEventListener("downloadprogress", (e) => {
-                            console.log(
-                                `Downloading Writer model... ${Math.floor(
-                                    (e.loaded / e.total) * 100
-                                )}%`
-                            );
-                        });
-                    },
-                });
-
-                let result;
-                try {
-                    const documentData = await this.getStoredDocumentContent();
-
-                    const writeOptions = {};
-                    let contextText = "";
-
-                    if (documentData && documentData.content) {
-                        contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
-                    }
-
-                    if (inputText && inputText.trim()) {
-                        contextText += `Current Input: ${inputText}`;
-                    }
-
-                    if (contextText.trim()) {
-                        writeOptions.context = contextText.trim();
-                    }
-
-                    result = await writer.write(instructions, writeOptions);
-                } catch (writeError) {
-                    console.error("Writer API error:", writeError);
-                    result = await writer.write(instructions, {});
-                }
-
-                let finalResult = result;
-                if (typeof result === "object" && result !== null) {
-                    finalResult =
-                        result.text ||
-                        result.content ||
-                        result.result ||
-                        JSON.stringify(result);
-                }
-
-                writer.destroy();
-                return { result: finalResult, type: "WRITING" };
+                return await this.performWriteOperation(inputText, instructions);
             } else {
                 if (!("Rewriter" in window)) {
                     throw new Error("Rewriter API is not available in this browser.");
