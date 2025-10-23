@@ -26,12 +26,6 @@ The extension operates through two main workflows:
 1. **Voice Control Flow**: Hands-free text rewriting and generation using voice commands
 2. **Floating Text Indicator Flow**: AI-powered proofreading and cover letter generation with document context
 
-## Demo
-
-Watch the video demonstration to see Nano Bot in action:
-
-[![Nano Bot Demo](demo.mp4)](demo.mp4)
-
 ## Features
 
 This tool helps in several day-to-day writing tasks which are:
