@@ -420,10 +420,10 @@
         init() {
             this.setupSpeechRecognition();
             // Use keyboard listener on macOS, background command messaging elsewhere
-            if (typeof this.operatingSystem === "string" && this.operatingSystem.includes("Mac")) {
-                this.setupKeyboardShortcut();
-            } else {
+            if (!(typeof this.operatingSystem === "string" && this.operatingSystem.includes("Mac"))) {
                 this.setupMessageListener();
+            } else {
+                this.setupKeyboardShortcut();
             }
             this.setupFocusTracking();
         },
@@ -477,6 +477,13 @@
         setupMessageListener() {
             chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (message.action === "toggleVoiceRecording") {
+                    const currentFocused = document.activeElement;
+                    const hasFocusedEditable = currentFocused && DOMUtils.isTextEditable(currentFocused);
+                    if (!hasFocusedEditable) {
+                        NotificationSystem.showToast("Focus a text input before processing voice", "error");
+                        this.recognizedText = "";
+                        return;
+                    }
                     this.handleVoiceToggle();
                     sendResponse({ success: true });
                 }
@@ -493,6 +500,14 @@
                         e.preventDefault();
                         e.stopPropagation();
                         e.stopImmediatePropagation();
+
+                        const currentFocused = document.activeElement;
+                        const hasFocusedEditable = currentFocused && DOMUtils.isTextEditable(currentFocused);
+                        if (!hasFocusedEditable) {
+                            NotificationSystem.showToast("Focus a text input before processing voice", "error");
+                            this.recognizedText = "";
+                            return;
+                        }
 
                         if (!extensionState.voiceControlEnabled) {
                             NotificationSystem.showToast("Voice control is disabled", "error");
@@ -537,6 +552,19 @@
                 NotificationSystem.showToast("Voice control is disabled", "error");
                 return;
             }
+
+            // Require a currently focused editable element before starting mic
+            const activeEl = document.activeElement;
+            const hasFocusedEditable = activeEl && DOMUtils.isTextEditable(activeEl);
+            if (!hasFocusedEditable) {
+                // Also clear any previous selection tracking to avoid using stale targets
+                this.lastFocusedInput = null;
+                this.lastSelection = null;
+                NotificationSystem.showToast("Focus a text input before using voice (Ctrl/Cmd+Q)", "error");
+                return;
+            }
+            // Keep our tracking in sync with the current focus
+            this.lastFocusedInput = activeEl;
 
             if (!this.recognition) {
                 NotificationSystem.showToast(
@@ -711,6 +739,15 @@
         },
 
         async processVoiceCommand() {
+            // Guard: require a current focused editable element
+            const currentFocused = document.activeElement;
+            const hasFocusedEditable = currentFocused && DOMUtils.isTextEditable(currentFocused);
+            if (!hasFocusedEditable) {
+                NotificationSystem.showToast("Focus a text input before processing voice", "error");
+                this.recognizedText = "";
+                return;
+            }
+
             if (!this.recognizedText) {
                 NotificationSystem.showToast("No speech detected", "error");
                 return;
@@ -721,7 +758,7 @@
             );
 
             let selectedText = "";
-            let focusedElement = this.lastFocusedInput;
+            let focusedElement = currentFocused;
 
             if (isWriteOperation) {
                 if (!focusedElement || !DOMUtils.isTextEditable(focusedElement)) {
@@ -733,13 +770,28 @@
                 }
                 selectedText = this.lastSelection ? this.lastSelection.text : "";
             } else {
+                // This is a REWRITE task - check if input is empty
                 const validation = this.validateTextSelection();
                 if (!validation.isValid) {
-                    NotificationSystem.showToast(validation.error, "error");
-                    return;
+                    // If validation fails due to empty input, check if we can perform WRITE instead
+                    if (validation.error === "No text found in the input field") {
+                        // Check if we have a focused element for writing
+                        if (focusedElement && DOMUtils.isTextEditable(focusedElement)) {
+                            // Perform WRITE operation instead of REWRITE
+                            selectedText = "";
+                            console.log("REWRITE task with empty input - switching to WRITE operation");
+                        } else {
+                            NotificationSystem.showToast(validation.error, "error");
+                            return;
+                        }
+                    } else {
+                        NotificationSystem.showToast(validation.error, "error");
+                        return;
+                    }
+                } else {
+                    selectedText = validation.selectedText;
+                    focusedElement = validation.focusedElement;
                 }
-                selectedText = validation.selectedText;
-                focusedElement = validation.focusedElement;
             }
 
             const documentData = await this.getStoredDocumentContent();
@@ -756,10 +808,13 @@
             }
 
             try {
-                const response = await this.rewriteText(
-                    selectedText,
-                    this.recognizedText
-                );
+                let response;
+                // If we're in a REWRITE task but with empty input, use the WRITE operation directly
+                if (!isWriteOperation && selectedText === "") {
+                    response = await this.performWriteOperation(selectedText, this.recognizedText);
+                } else {
+                    response = await this.rewriteText(selectedText, this.recognizedText);
+                }
 
                 const { result, type } = response;
                 NotificationSystem.showToast(
@@ -817,6 +872,70 @@
                 };
             }
             return null;
+        },
+
+        async performWriteOperation(inputText, instructions) {
+            if (!("Writer" in window)) {
+                throw new Error("Writer API is not available in this browser.");
+            }
+
+            const writerAvailability = await Writer.availability();
+            if (writerAvailability === "unavailable") {
+                throw new Error("Writer API unavailable.");
+            }
+
+            const writer = await Writer.create({
+                monitor(monitor) {
+                    monitor.addEventListener("downloadprogress", (e) => {
+                        console.log(
+                            `Downloading Writer model... ${Math.floor(
+                                (e.loaded / e.total) * 100
+                            )}%`
+                        );
+                    });
+                },
+            });
+
+            let result;
+            try {
+                const documentData = await this.getStoredDocumentContent();
+
+                const writeOptions = {};
+                let contextText = "";
+
+                if (documentData && documentData.content) {
+                    contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
+                }
+
+                if (inputText && inputText.trim()) {
+                    contextText += `Current Input: ${inputText}`;
+                }
+
+                if (contextText.trim()) {
+                    writeOptions.context = contextText.trim();
+                }
+
+                // Add the first person narrative instruction to the writer's prompt
+                const enhancedInstructions = `${instructions}\n\nYou are writing answers from the perspective of the user. Always use the first person narrative (I, me, my) as if you are the candidate themselves. Do not refer to the user in the third person (he, she, they, or their name).`;
+
+                result = await writer.write(enhancedInstructions, writeOptions);
+            } catch (writeError) {
+                console.error("Writer API error:", writeError);
+                const enhancedInstructions = `${instructions}\n\nYou are writing answers from the perspective of the user. Always use the first person narrative (I, me, my) as if you are the candidate themselves. Do not refer to the user in the third person (he, she, they, or their name).`;
+                result = await writer.write(enhancedInstructions, {});
+            }
+
+            let finalResult = result;
+            if (typeof result === "object" && result !== null) {
+                finalResult =
+                    result.text ||
+                    result.content ||
+                    result.result ||
+                    JSON.stringify(result);
+            }
+
+            writer.destroy();
+            return { result: finalResult, type: "WRITING" };
         },
 
         async rewriteText(inputText, instructions) {
@@ -881,63 +1000,7 @@
             const isWriting = instructionType === "WRITING";
 
             if (isWriting) {
-                if (!("Writer" in window)) {
-                    throw new Error("Writer API is not available in this browser.");
-                }
-
-                const writerAvailability = await Writer.availability();
-                if (writerAvailability === "unavailable") {
-                    throw new Error("Writer API unavailable.");
-                }
-
-                const writer = await Writer.create({
-                    monitor(monitor) {
-                        monitor.addEventListener("downloadprogress", (e) => {
-                            console.log(
-                                `Downloading Writer model... ${Math.floor(
-                                    (e.loaded / e.total) * 100
-                                )}%`
-                            );
-                        });
-                    },
-                });
-
-                let result;
-                try {
-                    const documentData = await this.getStoredDocumentContent();
-
-                    const writeOptions = {};
-                    let contextText = "";
-
-                    if (documentData && documentData.content) {
-                        contextText += `Reference Context (from ${documentData.fileName}):\n${documentData.content}\n\n`;
-                    }
-
-                    if (inputText && inputText.trim()) {
-                        contextText += `Current Input: ${inputText}`;
-                    }
-
-                    if (contextText.trim()) {
-                        writeOptions.context = contextText.trim();
-                    }
-
-                    result = await writer.write(instructions, writeOptions);
-                } catch (writeError) {
-                    console.error("Writer API error:", writeError);
-                    result = await writer.write(instructions, {});
-                }
-
-                let finalResult = result;
-                if (typeof result === "object" && result !== null) {
-                    finalResult =
-                        result.text ||
-                        result.content ||
-                        result.result ||
-                        JSON.stringify(result);
-                }
-
-                writer.destroy();
-                return { result: finalResult, type: "WRITING" };
+                return await this.performWriteOperation(inputText, instructions);
             } else {
                 if (!("Rewriter" in window)) {
                     throw new Error("Rewriter API is not available in this browser.");
@@ -1235,10 +1298,17 @@
             coverLetterIcon.textContent = "✍";
 
             const coverLetterText = document.createElement("span");
-            coverLetterText.textContent = "Write Cover Letter";
+            coverLetterText.textContent = "Find Job Description";
+            coverLetterText.id = "cover-letter-action-text";
+
+            const coverLetterReset = document.createElement("span");
+            coverLetterReset.id = "cover-letter-reset";
+            coverLetterReset.textContent = "✕";
+            coverLetterReset.style.cssText = "margin-left:8px; font-weight:bold; cursor:pointer; opacity:0.7; display:none;";
 
             this.coverLetterRectangle.appendChild(coverLetterIcon);
             this.coverLetterRectangle.appendChild(coverLetterText);
+            this.coverLetterRectangle.appendChild(coverLetterReset);
 
             this.initializeIcon(icon);
             this.shadow.appendChild(style);
@@ -1382,6 +1452,20 @@
                 this.scheduleButtonHide();
             });
 
+            // New: Double-click anywhere to show the floating circle at cursor position
+            document.addEventListener('dblclick', (e) => {
+                // Ignore if clicking inside our shadow UI
+                const path = e.composedPath ? e.composedPath() : [];
+                const clickedInsideShadow = path.includes(this.host) || path.includes(this.container);
+                if (clickedInsideShadow) return;
+
+                // If double-click on editable element, keep original behavior via focus handler
+                if (DOMUtils.isTextEditable(e.target)) return;
+
+                // Show the widget near double-click position
+                this.showAtPosition(e.pageX, e.pageY);
+            });
+
             // File upload rectangle click
             this.fileUploadRectangle.addEventListener("click", (e) => {
                 e.stopPropagation();
@@ -1391,25 +1475,20 @@
                 }
             });
 
-            // Cover letter rectangle click
+            // Cover letter rectangle click (new flow)
             this.coverLetterRectangle.addEventListener("click", (e) => {
                 e.stopPropagation();
-
-                ChromeAPI.getStorage(["uploadedFileName", "storedContent"]).then(
-                    (result) => {
-                        if (!result || !result.uploadedFileName || !result.storedContent) {
-                            NotificationSystem.showToast(
-                                "No file attached. Please upload a document first.",
-                                "error"
-                            );
-                            return;
-                        }
-
-                        const webpageText = this.extractWebpageText();
-                        this.checkForJobDescription(webpageText, result.storedContent);
-                    }
-                );
+                this.handleCoverLetterFlowClick();
             });
+
+            // Tiny cross to reset to Find mode
+            const resetEl = this.coverLetterRectangle.querySelector('#cover-letter-reset');
+            if (resetEl) {
+                resetEl.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    this.resetCoverLetterFlow();
+                });
+            }
         },
 
         showButtons() {
@@ -1497,6 +1576,30 @@
             const top = rect.bottom + window.scrollY - 40 - 6;
             this.host.style.left = left + "px";
             this.host.style.top = top + "px";
+        },
+
+        // Show near an arbitrary page position (e.g., double-click anywhere)
+        showAtPosition(pageX, pageY) {
+            if (this.hideTimeout) {
+                clearTimeout(this.hideTimeout);
+                this.hideTimeout = null;
+            }
+            this.activeElement = null;
+            this.originalInputElement = null;
+            this.lastFocusedElement = null;
+            // Also clear any voice flow tracking of previously-focused inputs
+            try {
+                if (typeof VoiceControlFlow !== 'undefined') {
+                    VoiceControlFlow.lastFocusedInput = null;
+                    VoiceControlFlow.lastSelection = null;
+                }
+            } catch (e) {
+                // no-op
+            }
+            this.host.style.left = Math.max(0, pageX - 40 - 6) + "px";
+            this.host.style.top = Math.max(0, pageY - 40 - 6) + "px";
+            this.container.classList.add("visible");
+            this.visible = true;
         },
 
         async performAndApplyProofreading() {
@@ -1679,8 +1782,10 @@
         },
 
         async checkForJobDescription(text, storedContent) {
+            // console.log("checkForJobDescription function called");
             try {
                 NotificationSystem.showToast("Analyzing page...", "info", 4000);
+                // console.log(`TEXT: ${text}  STOREDCONTENT: ${storedContent}`);
 
                 const prompt = `Analyze the following text and determine if it contains a detailed job description. A job description typically includes:
         - Job title/position
@@ -1846,6 +1951,116 @@ Generate a complete cover letter that the candidate can use for this job applica
                 }
             );
         },
+
+        // ---------------- Cover Letter Flow (Find -> Write/Download -> Reset) ----------------
+        coverLetterState: {
+            mode: 'find', // 'find' | 'ready'
+            jdText: null
+        },
+
+        setCoverLetterMode(mode) {
+            this.coverLetterState.mode = mode;
+            const textEl = this.shadow.getElementById('cover-letter-action-text');
+            const resetEl = this.shadow.getElementById('cover-letter-reset');
+            if (textEl) {
+                textEl.textContent = mode === 'find' ? 'Find Job Description' : 'Write/Download Cover Letter';
+            }
+            if (resetEl) {
+                resetEl.style.display = mode === 'find' ? 'none' : 'inline';
+            }
+        },
+
+        resetCoverLetterFlow() {
+            this.coverLetterState.jdText = null;
+            this.setCoverLetterMode('find');
+            ChromeAPI.removeStorage(['storedJDContent']);
+            NotificationSystem.showToast('Reset to Find Job Description', 'success');
+        },
+
+        handleCoverLetterFlowClick() {
+            if (this.coverLetterState.mode === 'find') {
+                const webpageText = this.extractWebpageText();
+                this.detectAndStoreJD(webpageText);
+            } else {
+                this.performCoverLetterWriteOrDownload();
+            }
+        },
+
+        async detectAndStoreJD(pageText) {
+            // console.log("detectAndStoreJD function called");
+            // console.log(`PAGE TEXT: ${pageText.substring(0, 200)}...`);
+            try {
+                NotificationSystem.showToast('Analyzing page...', 'info', 3000);
+                const prompt = `Analyze the following text and determine if it contains a job description. Answer only "YES" or "NO".\n\n${pageText.substring(0, 4000)}`;
+                const response = await this.callLanguageModel(prompt, 'job description analysis');
+                const hasJD = (response || '').trim().toUpperCase() === 'YES';
+                if (!hasJD) {
+                    NotificationSystem.showToast('No job description found on this page', 'error');
+                    return;
+                }
+                this.coverLetterState.jdText = pageText;
+                await ChromeAPI.setStorage('storedJDContent', pageText);
+                this.setCoverLetterMode('ready');
+                NotificationSystem.showToast('Job description found. Ready to write.', 'success');
+            } catch (err) {
+                console.error('JD detection failed:', err);
+                NotificationSystem.showToast('Error analyzing page content', 'error');
+            }
+        },
+
+        async performCoverLetterWriteOrDownload() {
+            try {
+                // Validate resume presence now
+                const resume = await ChromeAPI.getStorage(['uploadedFileName', 'storedContent']);
+                if (!resume || !resume.uploadedFileName || !resume.storedContent) {
+                    NotificationSystem.showToast('No resume attached. Please upload a document first.', 'error');
+                    return;
+                }
+
+                // Get JD from state or storage
+                let jdText = this.coverLetterState.jdText;
+                if (!jdText) {
+                    const s = await ChromeAPI.getStorage(['storedJDContent']);
+                    jdText = s && s.storedJDContent ? s.storedJDContent : null;
+                }
+                if (!jdText) {
+                    NotificationSystem.showToast('Job description not available. Please Find Job Description again.', 'error');
+                    return;
+                }
+
+                const targetEl = this.originalInputElement || this.lastFocusedElement;
+                const hasTarget = targetEl && DOMUtils.isTextEditable(targetEl);
+
+                // Show processing toast before generation starts
+                NotificationSystem.showToast('Processing cover letter...', 'info', 11000);
+
+                const coverLetterPrompt = `# Job Description from Webpage\n\n${jdText}\n\n# Resume Content\n\n${resume.storedContent}\n\n# Instructions\n\nPlease generate a professional cover letter that:\n1. Addresses the specific requirements mentioned in the job description\n2. Highlights relevant experience and skills from the resume that match the job requirements\n3. Demonstrates understanding of the role and company\n4. Is well-structured with proper greeting, body paragraphs, and closing\n5. Is professional, engaging, and tailored to this specific position\n6. Is approximately 3-4 paragraphs in length\n7. Must include info from resume like name, address, phone number, email, etc. instead of using place holders like [Name], [Address], [Phone Number], [Email] NO BRACKETS.\n\nGenerate a complete cover letter that the candidate can use for this job application.`;
+                const coverLetter = await this.callLanguageModel(coverLetterPrompt, 'cover letter generation');
+
+                if (hasTarget) {
+                    DOMUtils.setTextToElement(targetEl, coverLetter);
+                    NotificationSystem.showToast('Cover letter inserted', 'success');
+                } else {
+                    // Download as text (can later switch to DOCX with a generator)
+                    const blob = new Blob([coverLetter], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'cover-letter.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    NotificationSystem.showToast('Cover letter downloaded', 'success');
+                }
+
+                // Reset flow
+                this.resetCoverLetterFlow();
+            } catch (err) {
+                console.error('Write/Download cover letter failed:', err);
+                NotificationSystem.showToast('Failed to generate cover letter', 'error');
+            }
+        }
     };
 
     // ============================================================================
