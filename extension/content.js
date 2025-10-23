@@ -1,9 +1,7 @@
 (() => {
-    // Only inject if not already injected
     if (window.__aiTextAssistantInjected) return;
     window.__aiTextAssistantInjected = true;
 
-    // Check if Chrome extension context is valid
     if (!chrome || !chrome.runtime || !chrome.runtime.id) {
         console.warn("Chrome extension context is invalid or not available");
         return;
@@ -15,15 +13,12 @@
     // SHARED UTILITIES AND CONFIGURATION
     // ============================================================================
 
-    // Extension state management
     const extensionState = {
         voiceControlEnabled: false,
         floatingIndicatorEnabled: false,
         isVoiceListening: false,
         isProofreading: false,
     };
-
-    // Shared DOM utilities
     const DOMUtils = {
         isTextEditable(el) {
             if (!el) return false;
@@ -92,35 +87,28 @@
                 el.classList.contains("editable") ||
                 el.getAttribute("role") === "textbox"
             ) {
-                // For contentEditable elements, use the browser's selection API to replace only selected text
                 const selection = window.getSelection();
 
                 if (selection.rangeCount > 0) {
                     const range = selection.getRangeAt(0);
 
-                    // Check if the selection is within our target element
                     if (
                         el.contains(range.commonAncestorContainer) ||
                         el === range.commonAncestorContainer
                     ) {
-                        // Replace the selected content
                         range.deleteContents();
 
-                        // Create a text node with the corrected text
                         const textNode = document.createTextNode(correctedText);
                         range.insertNode(textNode);
 
-                        // Clear the selection
                         selection.removeAllRanges();
 
                         console.log("Replaced selected text using selection API");
                     } else {
-                        // Fallback to string replacement if selection is not in our element
                         console.log("Selection not in target element, using fallback");
                         this.fallbackTextReplacement(el, originalText, correctedText);
                     }
                 } else {
-                    // No selection, use fallback
                     console.log("No selection found, using fallback");
                     this.fallbackTextReplacement(el, originalText, correctedText);
                 }
@@ -149,7 +137,6 @@
             });
 
             if (el.tagName === "DIV") {
-                // For DIV elements, preserve HTML formatting by converting newlines to <br>
                 const htmlText = newText.replace(/\n/g, "<br>");
                 el.innerHTML = htmlText;
             } else {
@@ -163,7 +150,6 @@
     // ============================================================================
 
     const ChromeAPI = {
-        // Safely call chrome.storage.local.set
         async setStorage(key, value) {
             return new Promise((resolve, reject) => {
                 try {
@@ -185,7 +171,6 @@
             });
         },
 
-        // Safely call chrome.storage.local.get
         async getStorage(keys) {
             return new Promise((resolve) => {
                 try {
@@ -207,7 +192,6 @@
             });
         },
 
-        // Safely call chrome.storage.local.remove
         async removeStorage(keys) {
             return new Promise((resolve) => {
                 try {
@@ -229,7 +213,6 @@
             });
         },
 
-        // Safely send message to tabs
         async sendMessage(tabId, message) {
             return new Promise((resolve) => {
                 try {
@@ -252,7 +235,6 @@
         },
     };
 
-    // Shared notification system
     const NotificationSystem = {
         activeToasts: new Map(),
 
@@ -276,29 +258,26 @@
         },
 
         showToast(message, type = "success", duration = 3000) {
-            // Only play sound for success and error
             if (type === "success" || type === "error") {
                 this.playNotificationSound(type);
             }
 
             const toastContainer = this.createToastContainer();
 
-            // Remove existing toast with same message if it exists
             if (this.activeToasts.has(message)) {
                 const existingToast = this.activeToasts.get(message);
                 this.removeToast(existingToast);
             }
 
-            // Set default duration based on type if not specified or if 0
             if (duration === 0) {
                 if (type === "info") {
-                    duration = 4000; // Info toasts stay a bit longer
+                    duration = 4000;
                 } else if (type === "success") {
-                    duration = 3000; // Success toasts
+                    duration = 3000;
                 } else if (type === "error") {
-                    duration = 5000; // Error toasts stay longer for user to read
+                    duration = 5000;
                 } else {
-                    duration = 3000; // Default fallback
+                    duration = 3000;
                 }
             }
 
@@ -352,7 +331,6 @@
                 toast.style.transform = "translateX(0)";
             }, 10);
 
-            // Always set up auto-removal timeout
             const autoRemoveTimeout = setTimeout(() => {
                 this.removeToast(toast);
                 this.activeToasts.delete(message);
@@ -419,7 +397,6 @@
 
         init() {
             this.setupSpeechRecognition();
-            // Use keyboard listener on macOS, background command messaging elsewhere
             if (!(typeof this.operatingSystem === "string" && this.operatingSystem.includes("Mac"))) {
                 this.setupMessageListener();
             } else {
@@ -473,7 +450,6 @@
             };
         },
 
-        // NEW: Listen for messages from background script
         setupMessageListener() {
             chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (message.action === "toggleVoiceRecording") {
@@ -487,11 +463,10 @@
                     this.handleVoiceToggle();
                     sendResponse({ success: true });
                 }
-                return true; // Keep channel open for async response
+                return true;
             });
         },
 
-        // Keyboard shortcut handler (mirrors implementation from test.js)
         setupKeyboardShortcut() {
             document.addEventListener(
                 "keydown",
@@ -544,7 +519,6 @@
             );
         },
 
-        // NEW: Extracted toggle logic into separate method
         async handleVoiceToggle() {
             console.log("Voice toggle triggered");
 
@@ -553,17 +527,14 @@
                 return;
             }
 
-            // Require a currently focused editable element before starting mic
             const activeEl = document.activeElement;
             const hasFocusedEditable = activeEl && DOMUtils.isTextEditable(activeEl);
             if (!hasFocusedEditable) {
-                // Also clear any previous selection tracking to avoid using stale targets
                 this.lastFocusedInput = null;
                 this.lastSelection = null;
                 NotificationSystem.showToast("Focus a text input before using voice (Ctrl/Cmd+Q)", "error");
                 return;
             }
-            // Keep our tracking in sync with the current focus
             this.lastFocusedInput = activeEl;
 
             if (!this.recognition) {
@@ -739,7 +710,6 @@
         },
 
         async processVoiceCommand() {
-            // Guard: require a current focused editable element
             const currentFocused = document.activeElement;
             const hasFocusedEditable = currentFocused && DOMUtils.isTextEditable(currentFocused);
             if (!hasFocusedEditable) {
@@ -770,14 +740,10 @@
                 }
                 selectedText = this.lastSelection ? this.lastSelection.text : "";
             } else {
-                // This is a REWRITE task - check if input is empty
                 const validation = this.validateTextSelection();
                 if (!validation.isValid) {
-                    // If validation fails due to empty input, check if we can perform WRITE instead
                     if (validation.error === "No text found in the input field") {
-                        // Check if we have a focused element for writing
                         if (focusedElement && DOMUtils.isTextEditable(focusedElement)) {
-                            // Perform WRITE operation instead of REWRITE
                             selectedText = "";
                             console.log("REWRITE task with empty input - switching to WRITE operation");
                         } else {
@@ -809,7 +775,6 @@
 
             try {
                 let response;
-                // If we're in a REWRITE task but with empty input, use the WRITE operation directly
                 if (!isWriteOperation && selectedText === "") {
                     response = await this.performWriteOperation(selectedText, this.recognizedText);
                 } else {
@@ -915,7 +880,6 @@
                     writeOptions.context = contextText.trim();
                 }
 
-                // Add the first person narrative instruction to the writer's prompt
                 const enhancedInstructions = `${instructions}\n\nYou are writing answers from the perspective of the user. Always use the first person narrative (I, me, my) as if you are the candidate themselves. Do not refer to the user in the third person (he, she, they, or their name).`;
 
                 result = await writer.write(enhancedInstructions, writeOptions);
@@ -1329,7 +1293,6 @@
         },
 
         setupEventListeners() {
-            // Focus tracking
             document.addEventListener("focusin", (e) => {
                 const el = e.target;
                 if (DOMUtils.isTextEditable(el)) {
@@ -1344,7 +1307,6 @@
             document.addEventListener("focusout", (e) => {
                 if (extensionState.isProofreading) return;
 
-                // Don't hide if clicking on buttons
                 if (
                     e.relatedTarget &&
                     (e.relatedTarget === this.container ||
@@ -1367,7 +1329,6 @@
                 }, 300);
             });
 
-            // Selection tracking
             document.addEventListener("selectionchange", () => {
                 const selection = window.getSelection();
                 const selectedText = selection.toString().trim();
@@ -1389,7 +1350,6 @@
                 }
             });
 
-            // Container click for proofreading
             this.container.addEventListener("click", (e) => {
                 e.stopPropagation();
 
@@ -1409,7 +1369,6 @@
                 this.performAndApplyProofreading();
             });
 
-            // Hover effects with proper button management
             this.container.addEventListener("mouseenter", () => {
                 if (this.visible) {
                     if (this.buttonHideTimeout) {
@@ -1427,7 +1386,6 @@
                 this.scheduleButtonHide();
             });
 
-            // Keep buttons visible when hovering over them
             this.fileUploadRectangle.addEventListener("mouseenter", () => {
                 if (this.buttonHideTimeout) {
                     clearTimeout(this.buttonHideTimeout);
@@ -1452,21 +1410,16 @@
                 this.scheduleButtonHide();
             });
 
-            // New: Double-click anywhere to show the floating circle at cursor position
             document.addEventListener('dblclick', (e) => {
-                // Ignore if clicking inside our shadow UI
                 const path = e.composedPath ? e.composedPath() : [];
                 const clickedInsideShadow = path.includes(this.host) || path.includes(this.container);
                 if (clickedInsideShadow) return;
 
-                // If double-click on editable element, keep original behavior via focus handler
                 if (DOMUtils.isTextEditable(e.target)) return;
 
-                // Show the widget near double-click position
                 this.showAtPosition(e.pageX, e.pageY);
             });
 
-            // File upload rectangle click
             this.fileUploadRectangle.addEventListener("click", (e) => {
                 e.stopPropagation();
 
@@ -1475,13 +1428,11 @@
                 }
             });
 
-            // Cover letter rectangle click (new flow)
             this.coverLetterRectangle.addEventListener("click", (e) => {
                 e.stopPropagation();
                 this.handleCoverLetterFlowClick();
             });
 
-            // Tiny cross to reset to Find mode
             const resetEl = this.coverLetterRectangle.querySelector('#cover-letter-reset');
             if (resetEl) {
                 resetEl.addEventListener('click', (ev) => {
@@ -1578,7 +1529,6 @@
             this.host.style.top = top + "px";
         },
 
-        // Show near an arbitrary page position (e.g., double-click anywhere)
         showAtPosition(pageX, pageY) {
             if (this.hideTimeout) {
                 clearTimeout(this.hideTimeout);
@@ -1587,14 +1537,12 @@
             this.activeElement = null;
             this.originalInputElement = null;
             this.lastFocusedElement = null;
-            // Also clear any voice flow tracking of previously-focused inputs
             try {
                 if (typeof VoiceControlFlow !== 'undefined') {
                     VoiceControlFlow.lastFocusedInput = null;
                     VoiceControlFlow.lastSelection = null;
                 }
             } catch (e) {
-                // no-op
             }
             this.host.style.left = Math.max(0, pageX - 40 - 6) + "px";
             this.host.style.top = Math.max(0, pageY - 40 - 6) + "px";
@@ -1664,7 +1612,7 @@
                 const icon = this.container.querySelector(".loader");
                 if (icon) {
                     icon.classList.remove("loader");
-                    this.initializeIcon(icon); // restore original icon48
+                    this.initializeIcon(icon);
                 }
                 if (this.proofreaderSession) {
                     try {
@@ -1782,10 +1730,8 @@
         },
 
         async checkForJobDescription(text, storedContent) {
-            // console.log("checkForJobDescription function called");
             try {
                 NotificationSystem.showToast("Analyzing page...", "info", 4000);
-                // console.log(`TEXT: ${text}  STOREDCONTENT: ${storedContent}`);
 
                 const prompt = `Analyze the following text and determine if it contains a detailed job description. A job description typically includes:
         - Job title/position
@@ -1952,9 +1898,8 @@ Generate a complete cover letter that the candidate can use for this job applica
             );
         },
 
-        // ---------------- Cover Letter Flow (Find -> Write/Download -> Reset) ----------------
         coverLetterState: {
-            mode: 'find', // 'find' | 'ready'
+            mode: 'find',
             jdText: null
         },
 
@@ -1987,8 +1932,6 @@ Generate a complete cover letter that the candidate can use for this job applica
         },
 
         async detectAndStoreJD(pageText) {
-            // console.log("detectAndStoreJD function called");
-            // console.log(`PAGE TEXT: ${pageText.substring(0, 200)}...`);
             try {
                 NotificationSystem.showToast('Analyzing page...', 'info', 3000);
                 const prompt = `Analyze the following text and determine if it contains a job description. Answer only "YES" or "NO".\n\n${pageText.substring(0, 4000)}`;
@@ -2010,14 +1953,12 @@ Generate a complete cover letter that the candidate can use for this job applica
 
         async performCoverLetterWriteOrDownload() {
             try {
-                // Validate resume presence now
                 const resume = await ChromeAPI.getStorage(['uploadedFileName', 'storedContent']);
                 if (!resume || !resume.uploadedFileName || !resume.storedContent) {
                     NotificationSystem.showToast('No resume attached. Please upload a document first.', 'error');
                     return;
                 }
 
-                // Get JD from state or storage
                 let jdText = this.coverLetterState.jdText;
                 if (!jdText) {
                     const s = await ChromeAPI.getStorage(['storedJDContent']);
@@ -2031,7 +1972,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                 const targetEl = this.originalInputElement || this.lastFocusedElement;
                 const hasTarget = targetEl && DOMUtils.isTextEditable(targetEl);
 
-                // Show processing toast before generation starts
                 NotificationSystem.showToast('Processing cover letter...', 'info', 11000);
 
                 const coverLetterPrompt = `# Job Description from Webpage\n\n${jdText}\n\n# Resume Content\n\n${resume.storedContent}\n\n# Instructions\n\nPlease generate a professional cover letter that:\n1. Addresses the specific requirements mentioned in the job description\n2. Highlights relevant experience and skills from the resume that match the job requirements\n3. Demonstrates understanding of the role and company\n4. Is well-structured with proper greeting, body paragraphs, and closing\n5. Is professional, engaging, and tailored to this specific position\n6. Is approximately 3-4 paragraphs in length\n7. Must include info from resume like name, address, phone number, email, etc. instead of using place holders like [Name], [Address], [Phone Number], [Email] NO BRACKETS.\n\nGenerate a complete cover letter that the candidate can use for this job application.`;
@@ -2041,7 +1981,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                     DOMUtils.setTextToElement(targetEl, coverLetter);
                     NotificationSystem.showToast('Cover letter inserted', 'success');
                 } else {
-                    // Download as text (can later switch to DOCX with a generator)
                     const blob = new Blob([coverLetter], { type: 'text/plain;charset=utf-8' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -2054,7 +1993,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                     NotificationSystem.showToast('Cover letter downloaded', 'success');
                 }
 
-                // Reset flow
                 this.resetCoverLetterFlow();
             } catch (err) {
                 console.error('Write/Download cover letter failed:', err);
@@ -2067,7 +2005,6 @@ Generate a complete cover letter that the candidate can use for this job applica
     // EXTENSION INITIALIZATION AND STATE MANAGEMENT
     // ============================================================================
 
-    // Initialize extension state from storage
     ChromeAPI.getStorage([
         "voiceControlEnabled",
         "floatingIndicatorEnabled",
@@ -2077,7 +2014,6 @@ Generate a complete cover letter that the candidate can use for this job applica
             extensionState.floatingIndicatorEnabled =
                 result.floatingIndicatorEnabled === true;
 
-            // Initialize flows based on state
             if (extensionState.voiceControlEnabled) {
                 VoiceControlFlow.init();
             }
@@ -2086,7 +2022,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                 FloatingIndicatorFlow.init();
             }
         } else {
-            // Default values if storage fails
             extensionState.voiceControlEnabled = true;
             extensionState.floatingIndicatorEnabled = false;
             VoiceControlFlow.init();
@@ -2108,7 +2043,6 @@ Generate a complete cover letter that the candidate can use for this job applica
         const missingFlags = [];
 
         try {
-            // Check LanguageModel availability
             if (typeof LanguageModel !== "undefined") {
                 try {
                     const languageModelAvailability = await LanguageModel.availability();
@@ -2121,7 +2055,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                 missingFlags.push("chrome://flags/#prompt-api-for-gemini-nano");
             }
 
-            // Check Writer availability
             if (typeof Writer !== "undefined") {
                 try {
                     const writerAvailability = await Writer.availability();
@@ -2134,7 +2067,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                 missingFlags.push("chrome://flags/#writer-api-for-gemini-nano");
             }
 
-            // Check Rewriter availability
             if (typeof Rewriter !== "undefined") {
                 try {
                     const rewriterAvailability = await Rewriter.availability();
@@ -2147,7 +2079,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                 missingFlags.push("chrome://flags/#rewriter-api-for-gemini-nano");
             }
 
-            // Check Proofreader availability
             if (typeof Proofreader !== "undefined") {
                 try {
                     const proofreaderAvailability = await Proofreader.availability();
@@ -2160,7 +2091,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                 missingFlags.push("chrome://flags/#proofreader-api-for-gemini-nano");
             }
 
-            // Add missing flags info to results
             results.missingFlags = missingFlags;
 
             console.log("AI Model Status Check Results:", results);
@@ -2194,7 +2124,6 @@ Generate a complete cover letter that the candidate can use for this job applica
                 FloatingIndicatorFlow.checkStoredContent();
                 sendResponse({ success: true });
             } else if (request.action === "checkAIModelStatus") {
-                // Handle AI model status check
                 checkAIModelStatus()
                     .then((results) => {
                         sendResponse({ success: true, results });
@@ -2203,7 +2132,7 @@ Generate a complete cover letter that the candidate can use for this job applica
                         console.error("Error checking AI model status:", error);
                         sendResponse({ success: false, error: error.message });
                     });
-                return true; // Keep message channel open for async response
+                return true;
             }
         });
     } catch (error) {
